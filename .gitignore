@@ -1,0 +1,38 @@
+# Secrets and local config: never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+.aws/
+
+# Claude Code personal settings (shared settings.json IS committed)
+.claude/settings.local.json
+.claude/agent-memory-local/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / web build
+node_modules/
+web/dist/
+
+# Test and tool output
+playwright-report/
+test-results/
+.dynamodb/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

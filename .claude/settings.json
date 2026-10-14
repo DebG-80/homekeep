@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make test)",
+      "Bash(make lint)",
+      "Bash(make fmt)",
+      "Bash(make build)",
+      "Bash(make run)",
+      "Bash(make e2e)",
+      "Bash(uv sync *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(npm run build)",
+      "Bash(npm test *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(~/.aws/**)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(aws *)",
+      "Bash(cdk *)",
+      "Bash(npx cdk *)",
+      "Bash(terraform *)",
+      "Bash(docker push *)",
+      "Bash(gh release *)",
+      "Edit(/docs/HomeKeep_BRD_v1.0.md)",
+      "Edit(/docs/HomeKeep_TDD_H_v1.0.md)",
+      "Edit(/intent/**)",
+      "Edit(/.claude/settings.json)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR}\" && [ -f pyproject.toml ] && uv run --quiet ruff format --quiet . >/dev/null 2>&1; exit 0",
+            "timeout": 60,
+            "statusMessage": "Formatting Python with ruff"
+          }
+        ]
+      }
+    ]
+  }
+}
