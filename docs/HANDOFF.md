@@ -14,6 +14,13 @@ Written 29 September 2026; updated 4 October 2026 to adopt the AI-native SDLC wo
 | 6 | Load assumption: **at most 3 concurrent users**; three resettable judge households J1–J3 | One Fargate task, one Uvicorn worker. |
 | 7 | Fictional catalog content ("Frostline FL-18i", plus "FL-24x" for conflict tests) written from scratch | Removes manual-rights risk (BRD R09, D01). |
 | 8 | Region us-east-1; Claude Haiku 4.5 via the US inference profile | TDD §1.4 (D03). |
+| 9 | **No CDK or `infra/`** (14 Oct, P0-1). `docs/infra-contract.md` is the provisioning checklist; Deb provisions by console or CLI. No `make bootstrap/deploy/destroy`; for AT-32 the README points to the contract | Deviates from TDD §4.1, §11.1 and §11.5 steps 2 and 7. Recorded in `plans/slice-0.md`. |
+| 10 | **Minimal `web/` skeleton in Slice 0** (14 Oct, P0-2): Vite + TypeScript placeholder page, so the Dockerfile has its final shape and `package-lock.json` exists | Deviates from §6 (web was Slice 4). |
+| 11 | **Node 24 LTS** in the container, `.nvmrc` and README (14 Oct, P0-3) | Node 20 has been EOL since 30 Apr 2026. Deviates from TDD §11.5 step 1. |
+| 12 | **Task-role additions** (14 Oct, P0-4): `dynamodb:ConditionCheckItem`, prefix-conditioned `s3:ListBucket`, `cognito-idp:AdminDisableUser`; still no wildcard resources | Reasons in `docs/infra-contract.md` §16. Deviates from TDD §11.2. |
+| 13 | **Web client config at runtime** (14 Oct, P0-5): `GET /config.json` serves public Cognito config (domain, client ID, scopes) from env vars. Route lands in Slice 4; variable names fixed now | New; the TDD is silent. |
+| 14 | **Product feedback covers Amazon/AWS tools plus the MCP tools** (14 Oct, P0-6), 13 sections in `docs/product-feedback.md` | — |
+| 15 | **`docs/submission/feature-requests.md` holds requests to Amazon** (14 Oct, P0-7), each cross-linked to a friction-log entry | — |
 
 ## 2 Platform facts verified (25–26 Sep 2026; recheck before submission)
 

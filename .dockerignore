@@ -1,0 +1,12 @@
+# Allowlist: only what the image needs reaches the build context (never .env or .git).
+*
+!app/
+!web/
+!pyproject.toml
+!uv.lock
+!.python-version
+
+web/node_modules
+web/dist
+**/__pycache__
+**/*.py[cod]

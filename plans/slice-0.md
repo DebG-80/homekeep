@@ -226,3 +226,48 @@ Manual checks for Deb (not gates for this slice):
 - `evals.yml`, `smoke.yml` and the GitHub OIDC role (Slice 4).
 - Writing final submission answers, recording the video, filling in product feedback (Deb, near submission).
 - Docker image build in CI. The four named jobs only; Deb can add it later.
+
+## Implementation deviations (recorded during implementation, 14 Oct 2026)
+
+| # | Plan said | Implemented | Why |
+| --- | --- | --- | --- |
+| D-1 | Dev group: `httpx` (for FastAPI's TestClient) | `httpx2` | Starlette 1.8 (via FastAPI 0.143) deprecates `httpx` for `TestClient` and imports `httpx2` first; with `httpx` every test run printed a deprecation warning. `httpx2` is the Pydantic-maintained successor. `httpx` stays in the lock as a runtime dependency of `mcp`. |
+| D-2 | CI: `gitleaks/gitleaks-action@v2` | `gitleaks/gitleaks-action@v3.0.0`, with `GITLEAKS_ENABLE_COMMENTS=false` | v2 runs on Node 20, which GitHub removed from hosted runners on 16 Sep 2026, so v2 no longer runs. v3 changes only the runtime (same inputs and behaviour). Comments are off so the job keeps `contents: read`. |
+| D-3 | Task role: TDD §11.2 actions plus the P0-4 additions | Same, but **without `dynamodb:TransactWriteItems`** | IAM has no such action. Transactions are authorised per item action (`PutItem`, `UpdateItem`, `DeleteItem`, `ConditionCheckItem`), per the DynamoDB guide "Using IAM with DynamoDB transactions". Recorded in the contract §6.1 notes and §16 (P0-4). |
+| D-4 | `CMD uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers` | The same command run through `sh -c "exec … --port ${PORT:-8000} …"`; `HEALTHCHECK` also reads `PORT` | `PORT` is a contract variable; with a literal 8000 it would be dead configuration. The default and `EXPOSE` stay 8000, and `exec` keeps Uvicorn as PID 1 for signals. |
+| D-5 | `DYNAMODB_ENDPOINT_URL`: "only when `ENV=local`" | Forbidden outside `local` **and required in `local`** | Without it, `ENV=local` would silently talk to real DynamoDB with whatever credentials the shell holds. Covered by `test_dynamodb_endpoint_only_in_local_env`. |
+| D-6 | `compose.yaml` app "built locally" | Built for the host's native platform (no `platform:` pin) | `make build` produces the `linux/arm64` artifact; leaving compose native keeps `make run` usable on x86 machines. On Apple silicon both are arm64. |
+
+Additions beyond the plan (no plan text contradicted):
+- `Settings.from_env` refuses to start if a `SIMULATION_MODE` variable is present, so nobody can believe they switched it (contract §10, invariant 3).
+- Extra tests: `test_config.py::test_inv10_clock_override_rejected_at_app_startup` (G-3 through the real lifespan), `test_config.py::test_inv10_clock_override_must_carry_an_offset`, and `test_env_contract.py::test_nfr10_contract_required_column_matches_settings` (the contract's "Required in" column matches the code).
+- Version choices the plan left open: `strands-agents>=1.55,<2` (1.55.0 is the first release with `mcp>=1.23.0,<2.2`; lock has 1.60.0), TypeScript 7.0 (native compiler) and Vite 8.3, DynamoDB Local 3.3.1, uv 0.13.1 in the image, gitleaks 8.30.1 and ruff 0.17.0 in pre-commit; Actions `checkout@v7.0.1`, `setup-node@v7.1.0`, `setup-uv@v10.3.0`.
+
+## Review fixes (15 Oct 2026)
+
+The `reviewer` subagent found no Critical issues. Deb chose to fix findings 1, 3 and 5–9 now and keep 2, 4 and the minor nits open (listed below).
+
+| # | Finding | Fix |
+| --- | --- | --- |
+| D-7 (review 1, supersedes D-2) | gitleaks-action scans only the commits in a push or PR, never the full history the plan asked for, and runs its own default gitleaks (8.24.3) | The CI `gitleaks` job now downloads the gitleaks 8.30.1 release binary, verifies its SHA-256 against the release checksums file, and runs `gitleaks git` with `.gitleaks.toml` over the full checkout on every push and PR. There is no action licence question, no PR-API permission and no `root^` edge case. The job keeps `contents: read`. |
+| Review 3 | `ALLOWED_ORIGINS` was not normalised or validated, and `APP_BASE_URL` accepted a path. A pasted address-bar URL would make every browser and `/mcp` Origin check fail | `app/config.py` normalises `APP_BASE_URL`, `COGNITO_DOMAIN` and each `ALLOWED_ORIGINS` entry to `scheme://host[:port]`: it drops a trailing slash and default ports, and refuses a path, query, fragment, credentials or a bad port. In `demo`, every origin must be `https`. Tests: `test_config.py::test_nfr10_origins_normalised_to_what_browsers_send` and `::test_nfr10_origins_with_paths_or_plain_http_rejected`. Both were confirmed to fail against the pre-fix code. |
+| Review 5 | `--proxy-headers` has no effect behind the ALB; Uvicorn trusts forwarded headers only from 127.0.0.1 | Kept deliberately: trusting the ALB's addresses would also let a direct caller spoof the scheme. **Rule for Slice 2 and later:** every public URL (OAuth callbacks, Protected Resource Metadata, `WWW-Authenticate` `resource_metadata`) is built from `APP_BASE_URL`, never from the request. Recorded in the Dockerfile and contract §8. |
+| Review 6 | The CORS JSON was in console format, next to lifecycle JSON in CLI format | Contract §4 gives CORS in CLI format (`{"CORSRules": […]}`) and says what to paste in the console; the lifecycle JSON is labelled as CLI format. |
+| Review 7 | The `MCP_LOOPBACK_URL` default was fixed at `:8000` even though `PORT` is configurable (D-4) | The default is derived as `http://127.0.0.1:{PORT}/mcp`; contract §9 is updated. Test: `test_config.py::test_mcp_loopback_url_follows_port`, confirmed to fail against the pre-fix code. |
+| Review 8 | Account IDs inside ECR registry URIs were not caught by gitleaks | New rule `homekeep-aws-account-id-in-ecr-uri` in `.gitleaks.toml`. Test: `test_gitleaks_rules.py::test_inv9_custom_rule_catches_account_ids_in_ecr_uris`; the placeholder test also covers `<ACCOUNT_ID>.dkr.ecr…`. |
+| Review 9 | A copied `.env.example` would turn `<PLACEHOLDER>` strings into real local values, and real eval values were to share `make run`'s `.env` | Every `.env.example` value is now empty except `ENV=local` and the host DynamoDB Local endpoint; the expected shape is in the comment above each line. Real AWS values for `make eval` go in `.env.eval` (gitignored by `.env.*`). Contract §14 and the README say so. **Slice 4:** `make eval` reads `.env.eval`. |
+
+A related hardening was found while fixing review 9: an empty `PORT=` passed into the container would have broken the Docker `HEALTHCHECK`. It now falls back to 8000 for an empty value as well as an unset one, matching the `CMD`.
+
+## Open items from review (Deb, 15 Oct 2026)
+
+- **Review 2 (Important, needs a console check):** contract §11 says to enable Haiku 4.5 on Bedrock's "Model access" page. The reviewer believes that page was retired in late 2025. If so, the first Anthropic call in an account may need a use-case form or a Marketplace subscription that the task role cannot complete. Proposed fix: an admin sends one prompt in the Bedrock playground first, with a matching §15 tick box. Do not widen the task role.
+- **Review 4 (Important, decide before Slice 4):** no environment allows both DynamoDB Local and `CLOCK_OVERRIDE`, so the clock-dependent E2E tests (AT-13 expiry, AT-34) cannot run against `make run`. Options: (a) run them only against the AWS `test` stack; (b) allow `CLOCK_OVERRIDE` in `local` (needs a TDD §4.5 change proposal); (c) allow `DYNAMODB_ENDPOINT_URL` in `test`.
+- **Nits, kept open:**
+  - Contract §6.1 builds the inference-profile ARN with `${AWS_REGION}` rather than `${BEDROCK_REGION}`.
+  - Add Inspector's guided-flow callback `/oauth/callback/debug` to the `mcp-inspector` client (G-5).
+  - HANDOFF row 12 does not mention dropping `TransactWriteItems` (D-3).
+  - `testing-instructions.md` says Inspector's tool list "shows the customer tools", but the trusted tools are listed too.
+  - `CLOCK_OVERRIDE` accepts a bare epoch number (possible only in `test`).
+  - "What it does" in `docs/submission/description.md` is in the present tense (it is TODO-gated).
+- **Slice 2 heads-up from the review:** MCP clients on 2025-11-25 expect `code_challenge_methods_supported` in the authorization server metadata, and Cognito's discovery document may not publish it. Check early with Inspector.

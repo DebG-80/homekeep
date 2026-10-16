@@ -1,0 +1,12 @@
+# Install once with `pre-commit install` (pipx install pre-commit, or brew install pre-commit).
+# Revs verified on 2026-10-14; ruff matches the version in uv.lock.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+      - id: ruff-format

@@ -1,0 +1,30 @@
+# gitleaks configuration (CLAUDE.md invariant 9: no secrets or real identifiers in this public repo).
+# Extends the default rule set with three AWS identifier shapes. Documentation and examples use
+# placeholders such as <COGNITO_USER_POOL_ID> and ${ACCOUNT_ID}, which these rules never match,
+# so no allowlist is needed. tests/unit/test_gitleaks_rules.py exercises each rule.
+
+title = "HomeKeep gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "homekeep-cognito-user-pool-id"
+description = "Amazon Cognito user pool ID (use the <COGNITO_USER_POOL_ID> placeholder instead)"
+regex = '''\b(?:us|eu|ap|ca|sa|me|af|il|mx)-(?:gov-)?[a-z]+-\d_[A-Za-z0-9]{9}\b'''
+keywords = ["us-", "eu-", "ap-", "ca-", "sa-", "me-", "af-", "il-", "mx-"]
+tags = ["aws", "identifier"]
+
+[[rules]]
+id = "homekeep-aws-account-id-in-arn"
+description = "12-digit AWS account ID inside an ARN (use the ${ACCOUNT_ID} placeholder instead)"
+regex = '''\barn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:\d{12}:'''
+keywords = ["arn:aws"]
+tags = ["aws", "identifier"]
+
+[[rules]]
+id = "homekeep-aws-account-id-in-ecr-uri"
+description = "12-digit AWS account ID in an ECR registry URI (use the <ACCOUNT_ID> placeholder instead)"
+regex = '''\b\d{12}\.dkr\.ecr(?:-fips)?\.[a-z0-9-]+\.amazonaws\.com'''
+keywords = [".dkr.ecr"]
+tags = ["aws", "identifier"]

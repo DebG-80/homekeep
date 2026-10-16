@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
 *.pem
 *.key
 .aws/
@@ -19,10 +21,13 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+*.egg-info/
+.uv-cache/
 
 # Node / web build
 node_modules/
 web/dist/
+dist/
 
 # Test and tool output
 playwright-report/

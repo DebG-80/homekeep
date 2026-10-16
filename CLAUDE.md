@@ -29,10 +29,13 @@ HomeKeep lets elders in Indian households get appliance help by voice, without i
 ## Commands (created in Slice 0)
 
 - `make test`: unit + contract tests (pytest, moto, fake model). Must exit 0.
-- `make lint`: ruff check and format check; zero findings.
-- `make e2e`: Playwright text-path tests against `make run`.
-- `make run`: local app on :8000 with DynamoDB Local and the fake model (`ENV=local`).
-- `make eval`: **Deb only.** The real-Bedrock evaluation set.
+- `make lint`: ruff check and format check, plus the web typecheck; zero findings.
+- `make fmt`: apply ruff fixes and formatting.
+- `make run`: local app on :8000 with DynamoDB Local and the fake model (`ENV=local`). `make stop` stops it.
+- `make build`: the `linux/arm64` image `homekeep:local`.
+- `make audit`: pip-audit on the lock plus `npm audit`.
+- `make e2e`: Playwright text-path tests against `make run`. Stub until Slice 4 (exits 2).
+- `make eval`: **Deb only.** The real-Bedrock evaluation set. Stub until Slice 4 (exits 2).
 
 ## Verifying your work
 
