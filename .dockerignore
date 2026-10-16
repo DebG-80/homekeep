@@ -1,6 +1,8 @@
 # Allowlist: only what the image needs reaches the build context (never .env or .git).
 *
 !app/
+!catalog_data/
+!fixtures/
 !web/
 !pyproject.toml
 !uv.lock

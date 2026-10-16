@@ -26,6 +26,7 @@ def event_item(
     new_version: int | None,
     provenance: str = "CUSTOMER",
     result: str = "OK",
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     event_id = ordered_id()
     timestamp = iso_utc(ctx.clock.now())
@@ -45,6 +46,7 @@ def event_item(
         "prior_version": prior_version,
         "new_version": new_version,
         "provenance": provenance,
+        **(extra or {}),
     }
 
 

@@ -1,0 +1,22 @@
+{
+  "version": "generic-v1",
+  "notes": "Reviewed observation prompts for appliances without a verified model, and the labelled scope limit for fridge and TV (FR-08, AT-33). Observations only: no model-specific advice.",
+  "prompts": {
+    "AC": [
+      "Is the AC making any unusual sound right now? It's fine to say you're not sure.",
+      "Is any water dripping from the AC indoors?"
+    ],
+    "REFRIGERATOR": [
+      "Is the light inside the fridge coming on when you open the door?",
+      "Is the fridge making its usual humming sound?"
+    ],
+    "TELEVISION": [
+      "Does the small light on the front of the TV come on?",
+      "Is there sound but no picture, or nothing at all?"
+    ]
+  },
+  "scope_limit": {
+    "REFRIGERATOR": "I can't give checks for fridges yet. I can note what you've told me and arrange a demo technician visit.",
+    "TELEVISION": "I can't give checks for TVs yet. I can note what you've told me and arrange a demo technician visit."
+  }
+}

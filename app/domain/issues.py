@@ -11,6 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
+from app.catalog.hazards import classify
 from app.domain import appliances, mutations
 from app.domain.clock import iso_utc
 from app.domain.context import OperationContext
@@ -19,6 +20,7 @@ from app.domain.events import event_item
 from app.domain.household import require_storage_consent
 from app.domain.ids import new_id
 from app.domain.state import ACTIVE_ISSUE_STATUSES, IssueEvent, IssueStatus, next_issue_status
+from app.security.actor import Grant, HouseholdRole
 from app.security.authz import Action, authorize
 from app.store import keys
 
@@ -94,6 +96,12 @@ def get_issue(ctx: OperationContext, issue_id: str) -> dict[str, Any]:
         "observations": [
             {k: o[k] for k in ("field", "value", "status", "version")} for o in observations
         ],
+        "steps": [
+            {k: s[k] for k in ("step_id", "result", "catalog_item", "catalog_version", "at")}
+            for s in ctx.table.query(
+                keys.household_pk(ctx.household_id), keys.step_prefix(issue_id)
+            )
+        ],
     }
 
 
@@ -142,6 +150,7 @@ def report_issue(
 
         issue_id = new_id()
         now = iso_utc(ctx.clock.now())
+        hold = household_safety_hold(ctx)
         item = {
             "PK": keys.household_pk(ctx.household_id),
             "SK": keys.issue_sk(issue_id),
@@ -152,8 +161,8 @@ def report_issue(
             "summary": summary or wording,
             "symptom_category": category.value,
             "status": IssueStatus.OPEN.value,
-            "safety_flag": False,
-            "safety_reason": None,
+            "safety_flag": hold is not None,  # born under a household safety hold
+            "safety_reason": hold["reason"] if hold else None,
             "reporting_actor": ctx.actor.sub,
             "created_at": now,
             "updated_at": now,
@@ -162,7 +171,7 @@ def report_issue(
         operations = [
             mutations.storage_consent_check(ctx),
             ctx.table.put_new_op(item),
-            ctx.table.put_op(
+            ctx.table.put_new_op(
                 event_item(
                     ctx,
                     action="ISSUE_REPORTED",
@@ -230,7 +239,7 @@ def apply_issue_event(
         operations = [
             mutations.storage_consent_check(ctx),
             ctx.table.put_versioned_op(updated, expected_version),
-            ctx.table.put_op(
+            ctx.table.put_new_op(
                 event_item(
                     ctx,
                     action=f"ISSUE_{event.value}",
@@ -260,3 +269,83 @@ _RESOLUTION_EVENTS = frozenset(
         IssueEvent.CUSTOMER_CLOSED,
     }
 )
+
+
+def report_warning_sign(
+    ctx: OperationContext, sign: str, issue_id: str | None = None
+) -> dict[str, Any]:
+    """A reported warning sign (FR-07). Always returns the approved escalation text, verbatim.
+
+    With an issue: that issue gets the safety flag. Without one (a fresh session, or a hazard on
+    an appliance not yet discussed): the household gets a safety hold, which blocks routine
+    guidance and is inherited by issues reported afterwards, and every open issue the actor may
+    edit is flagged too. Only staff clear a flag or a hold (Slice 3).
+    """
+    hazard = classify(sign)
+    if issue_id is not None:
+        authorize(ctx.actor, Action.ISSUE_WRITE, ctx.household_id)
+        issue = load(ctx, issue_id)
+        if issue["status"] in ACTIVE_ISSUE_STATUSES:
+            updated = apply_issue_event(
+                ctx, issue_id, IssueEvent.HAZARD_REPORTED, issue["version"], hazard.reason
+            )
+        else:
+            updated = view(issue)  # a resolved or closed case keeps its status
+        return {"reason": hazard.reason, "speech": hazard.speech, "issue": updated}
+
+    authorize(ctx.actor, Action.HOUSEHOLD_READ, ctx.household_id)  # restricting is always allowed
+    flagged = []
+    meta = ctx.table.get(keys.household_pk(ctx.household_id), keys.META)
+    if meta is not None and meta.get("storage_consent") == "GRANTED":
+        set_safety_hold(ctx, hazard.reason)
+        if ctx.actor.role is HouseholdRole.OWNER or Grant.EDIT in ctx.actor.grants:
+            for item in ctx.table.query(keys.household_pk(ctx.household_id), keys.ISSUE_PREFIX):
+                if item.get("kind") == "ISSUE" and item["status"] in ACTIVE_ISSUE_STATUSES:
+                    flagged.append(
+                        apply_issue_event(
+                            ctx,
+                            item["issue_id"],
+                            IssueEvent.HAZARD_REPORTED,
+                            item["version"],
+                            hazard.reason,
+                        )["issue_id"]
+                    )
+    return {"reason": hazard.reason, "speech": hazard.speech, "issue": None, "flagged": flagged}
+
+
+def set_safety_hold(ctx: OperationContext, reason: str) -> None:
+    args = {"reason": reason}
+
+    def body(mutation: mutations.Mutation) -> Any:
+        pk = keys.household_pk(ctx.household_id)
+        meta = ctx.table.get(pk, keys.META)
+        if meta is None:
+            raise DomainError(ErrorCode.AUTH_DENIED, "HOUSEHOLD_NOT_FOUND")
+        if meta.get("safety_hold"):
+            return {"safety_hold": meta["safety_hold"]}  # already held; keep the first reason
+        hold = {"reason": reason, "at": iso_utc(ctx.clock.now()), "actor_sub": ctx.actor.sub}
+        updated = {**meta, "safety_hold": hold, "version": meta["version"] + 1}
+        operations = [
+            ctx.table.put_versioned_op(updated, meta["version"]),
+            ctx.table.put_new_op(
+                event_item(
+                    ctx,
+                    action="SAFETY_HOLD_SET",
+                    record_sk=keys.META,
+                    appliance_id=None,
+                    prior_version=meta["version"],
+                    new_version=updated["version"],
+                )
+            ),
+        ]
+        try:
+            return mutations.commit(ctx, mutation, operations, {"safety_hold": hold})
+        except ConflictError as exc:
+            raise DomainError(ErrorCode.RECORD_CONFLICT, "STALE_VERSION") from exc
+
+    mutations.run(ctx, "set_safety_hold", args, body)
+
+
+def household_safety_hold(ctx: OperationContext) -> dict[str, Any] | None:
+    meta = ctx.table.get(keys.household_pk(ctx.household_id), keys.META)
+    return (meta or {}).get("safety_hold")

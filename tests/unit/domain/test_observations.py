@@ -98,3 +98,22 @@ def test_nfr05_stale_expected_version_returns_record_conflict(world: World, expe
         o["field"]: o["value"] for o in get_issue(world.ctx(OWNER_A), issue_id)["observations"]
     }
     assert answers == {"airflow": "weak"}
+
+
+def test_g2_7_first_answer_event_records_issue_triage_versions(world: World) -> None:
+    from app.store import keys
+    from tests.unit.domain.world import HH_A
+
+    issue_id = _ac_issue(world)
+    record_observation(world.ctx(OWNER_A, correlation_id="corr-first"), issue_id, "onset", "today")
+    record_observation(
+        world.ctx(OWNER_A, correlation_id="corr-second"), issue_id, "airflow", "weak"
+    )
+    events = {e["correlation_id"]: e for e in world.items(HH_A, keys.EVENT_PREFIX)}
+    first, second = events["corr-first"], events["corr-second"]
+    assert (first["issue_status"], first["issue_prior_version"], first["issue_new_version"]) == (
+        "TRIAGING",
+        1,
+        2,
+    )
+    assert "issue_status" not in second  # only the answer that started triage changed the issue

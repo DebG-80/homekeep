@@ -1,0 +1,81 @@
+{
+  "version": "hazards-v1",
+  "reviewer": "hk-reviewer",
+  "review_date": "2026-10-01",
+  "notes": "Approved escalation text (FR-07). Spoken verbatim by the server; the model never rephrases it. Never claims emergency dispatch. GENERAL is used when the assistant reports a warning sign the lexicon does not match. Wording is appliance-neutral because the lexicon applies to every appliance.",
+  "hazards": [
+    {
+      "reason": "FIRE",
+      "patterns": [
+        "fire",
+        "flames?",
+        "caught\\s+fire",
+        "on\\s+fire"
+      ],
+      "speech": "Please leave the room now and get help from someone nearby. Don't try to put out an electrical fire with water."
+    },
+    {
+      "reason": "BURNING_SMELL",
+      "patterns": [
+        "burn(ing|t)?\\s+(\\w+\\s+){0,2}smell",
+        "smell\\w*\\W+(\\w+\\W+){0,4}burn(ing|t)?",
+        "(something|it)\\W+(is\\W+|'s\\W+)?burning"
+      ],
+      "speech": "Please stop using it and switch it off if you can do that safely, then keep away from it. I'll help you get a demo technician to check it."
+    },
+    {
+      "reason": "SMOKE",
+      "patterns": [
+        "smok(e|es|ing|y)"
+      ],
+      "speech": "Please move away from it now and keep the room clear. If there is fire, leave the room and get help from someone nearby."
+    },
+    {
+      "reason": "SPARKS",
+      "patterns": [
+        "spark(s|ing|ed)?"
+      ],
+      "speech": "Please don't touch it and keep away from it. I'll help you get a demo technician to check it."
+    },
+    {
+      "reason": "SHOCK",
+      "patterns": [
+        "(electric\\s+)?shock(ed|s)?",
+        "gave\\s+me\\s+a\\s+jolt",
+        "(got|getting|giving|gives|get)\\s+(a\\s+)?current",
+        "current\\s+(is\\s+)?(coming|passing|flowing)"
+      ],
+      "speech": "Please don't touch it again and keep away from it. If you feel unwell, ask someone nearby for help."
+    },
+    {
+      "reason": "REPEATED_TRIPPING",
+      "patterns": [
+        "keeps?\\s+tripping",
+        "trip(s|ped|ping)?\\s+the\\s+(switch|breaker|mcb|power)",
+        "(mcb|breaker|trip\\s+switch)\\s+(\\w+\\s+)?trips?",
+        "power\\s+keeps\\s+going\\s+off"
+      ],
+      "speech": "Please leave it switched off and don't keep turning it back on. I'll help you get a demo technician to check it."
+    },
+    {
+      "reason": "WATER_NEAR_ELECTRICS",
+      "patterns": [
+        "water\\s+(near|on|in|over)\\s+the\\s+(plug|socket|switch\\w*|wires?)"
+      ],
+      "speech": "Please keep away from the wet area and don't touch the switch or plug. I'll help you get a demo technician to check it."
+    },
+    {
+      "reason": "EXPOSED_WIRING",
+      "patterns": [
+        "(exposed|bare|loose)\\s+wires?",
+        "wires?\\s+(are\\s+)?(showing|hanging|sticking\\s+out)"
+      ],
+      "speech": "Please don't touch anything near the wires and keep away. I'll help you get a demo technician to check it."
+    },
+    {
+      "reason": "GENERAL",
+      "patterns": [],
+      "speech": "Please stop using it and keep away from it for now. I'll help you get a demo technician to check it."
+    }
+  ]
+}

@@ -27,6 +27,20 @@ Prerequisites:
 
 `make e2e` and `make eval` arrive in Slice 4. Configuration comes only from environment variables; `.env.example` lists every one with placeholders. Copy it to `.env` for local overrides (its values are empty, so a copy changes nothing until you fill a line in). Real AWS values for `make eval` go in `.env.eval`, never in `.env`. Both files are gitignored; never commit them. Optionally run `pre-commit install` to get the gitleaks and ruff hooks.
 
+## Trying the MCP server locally
+
+With `make run` up (`ENV=local`), get a token for a seeded identity and talk to `/mcp`:
+
+```bash
+TOKEN=$(curl -s -X POST localhost:8000/local/token -H 'Content-Type: application/json' \
+  -d '{"identity":"a_owner"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+curl -s localhost:8000/mcp -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+In MCP Inspector, choose Streamable HTTP, URL `http://localhost:8000/mcp`, and paste the token as a Bearer token. `/local/token` exists only when `ENV=local`.
+
 ## Deploying to AWS
 
 There is no infrastructure-as-code in this release. Provision the AWS resources by following [`docs/infra-contract.md`](docs/infra-contract.md): it lists every resource, setting, IAM policy and environment variable the app expects, plus a verification checklist. Then seed the users and households with `uv run python -m scripts.seed --target aws --env <test|demo>` (contract §14.1). The first run shows the target and writes nothing; re-run with `--yes`. Each new password is printed once.

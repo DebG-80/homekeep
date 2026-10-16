@@ -47,5 +47,6 @@ def failure(ctx: OperationContext, error: DomainError) -> dict[str, Any]:
             "reason": error.reason,
             "message": error.message,
             "support_reference": ctx.correlation_id,
+            "details": error.details,
         },
     }

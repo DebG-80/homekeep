@@ -32,6 +32,8 @@ RUN groupadd --system --gid 10001 homekeep \
 WORKDIR /srv
 COPY --from=deps /opt/venv /opt/venv
 COPY app/ ./app/
+COPY catalog_data/ ./catalog_data/
+COPY fixtures/ ./fixtures/
 COPY --from=web /web/dist ./web/dist
 USER 10001:10001
 EXPOSE 8000
@@ -42,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # URL stays http://… and a direct caller cannot spoof it. Every public URL (OAuth callbacks,
 # Protected Resource Metadata, WWW-Authenticate resource_metadata) must be built from
 # APP_BASE_URL, never from the request (docs/infra-contract.md §8).
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\" --workers 1 --proxy-headers"]
+CMD ["sh", "-c", "exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port \"${PORT:-8000}\" --workers 1 --proxy-headers"]

@@ -1,0 +1,19 @@
+{
+  "item_id": "frostline-fl-18i",
+  "version": "v1",
+  "status": "WITHDRAWN",
+  "brand": "Frostline",
+  "model": "FL-18i",
+  "category": "AC",
+  "document_id": "frostline-fl-18i-manual-v1",
+  "source": "sources/frostline-fl-18i-manual.md",
+  "reviewer": "hk-reviewer",
+  "review_date": "2026-09-20",
+  "withdrawal_reason": "Superseded by v2 after a wording review.",
+  "steps": {
+    "NOT_COOLING": [
+      {"step_id": "fl18i-v1-cool-mode", "speech": "Please set the AC to cooling with the remote.", "locator": "Section 3.2, Operating modes", "evidence": "The FL-18i cools only in COOL mode.", "helper_only": false}
+    ]
+  },
+  "error_codes": {}
+}

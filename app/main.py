@@ -1,30 +1,74 @@
-"""FastAPI entry point. Slice 0 serves only the liveness check."""
+"""FastAPI entry point: liveness, the turn API, the MCP server at /mcp and, in ENV=local, local
+sign-in.
+
+Run with `uvicorn --factory app.main:create_app`: settings are read when the app is built, so a
+misconfigured environment stops startup (G-3).
+"""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 
-from app.config import Settings
+from app import local_auth
+from app.channel import api as channel_api
+from app.config import ConfigError, Settings
+from app.domain.clock import Clock, clock_from_settings
+from app.logging import configure_logging
+from app.mcp_server.server import build_mcp, build_mcp_app
+from app.runtime import Runtime
+from app.security.attestation import Attestor
+from app.security.local_issuer import LocalIssuer
+from app.security.verifier import build_token_verifier
+from app.store.table import Table
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    table: Table | None = None,
+    issuer: LocalIssuer | None = None,
+    clock: Clock | None = None,
+    model_factory: Callable[[], Any] | None = None,
+) -> FastAPI:
+    settings = settings or Settings.from_env()
+    configure_logging(settings.log_level)
+    if issuer is not None and settings.env != "local":
+        raise ConfigError("the local token issuer is allowed only when ENV=local")
+    if settings.env == "local" and issuer is None:
+        issuer = LocalIssuer()
+    runtime = Runtime(
+        settings=settings,
+        table=table or Table.from_settings(settings),
+        clock=clock or clock_from_settings(settings),
+        verifier=build_token_verifier(settings, issuer),
+        attestor=Attestor(),  # per-process key: valid because there is exactly one worker
+        local_issuer=issuer,
+        model_factory=model_factory,  # tests inject a scripted model; otherwise per settings
+    )
+    mcp = build_mcp(runtime)
+    mcp_app = build_mcp_app(mcp)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Fail fast: an environment that breaks the contract stops startup (G-3).
-        app.state.settings = settings or Settings.from_env()
-        yield
+        app.state.runtime = runtime
+        async with mcp.session_manager.run():
+            yield
 
-    app = FastAPI(title="HomeKeep", docs_url=None, redoc_url=None, lifespan=lifespan)
+    app = FastAPI(
+        title="HomeKeep", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
+    )
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         # Liveness only: no AWS calls, so a DynamoDB or Bedrock hiccup never restarts the task.
         return {"status": "ok"}
 
+    app.include_router(channel_api.router())
+    if issuer is not None:
+        app.include_router(local_auth.router(issuer))
+    app.mount("/", mcp_app)  # last: /mcp and the protected-resource metadata
     return app
-
-
-app = create_app()

@@ -1,0 +1,21 @@
+{
+  "item_id": "frostline-fl-24x",
+  "version": "a",
+  "status": "PUBLISHED",
+  "brand": "Frostline",
+  "model": "FL-24x",
+  "category": "AC",
+  "document_id": "frostline-fl-24x-manual-a",
+  "source": "sources/frostline-fl-24x-manual-a.md",
+  "reviewer": "hk-reviewer",
+  "review_date": "2026-10-01",
+  "steps": {
+    "NOT_COOLING": [
+      {"step_id": "fl24x-cool-mode", "speech": "Please check the remote shows the snowflake sign for cooling. If it doesn't, press Mode until it does.", "locator": "Page 9, Modes", "evidence": "Select COOL (snowflake) with the MODE key.", "helper_only": false}
+    ]
+  },
+  "error_codes": {
+    "E1": {"step_id": "fl24x-e1", "speech": "That code means the AC lost its settings. Please switch it off with the remote and on again once.", "locator": "Page 21, Codes", "evidence": "E1: settings memory error. Restart once with the remote.", "helper_only": false},
+    "E4": {"step_id": "fl24x-a-e4", "speech": "That code means the air filter needs attention. I can arrange a demo technician visit.", "locator": "Page 21, Codes", "evidence": "E4: filter reminder.", "helper_only": false}
+  }
+}

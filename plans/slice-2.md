@@ -202,3 +202,75 @@ No AWS is needed. Everything runs on moto, DynamoDB Local, the local token issue
 - Slice 4: the web client, voice, Playwright E2E, reset/purge.
 - Deferred by P1-1: `manage_reminder` (FR-19), documents, the Ops page, the admin fault API.
 - Any AWS resource, real Bedrock calls, `make eval`; commits and pushes.
+
+## Implementation deviations and notes (recorded during implementation, 16 Oct 2026)
+
+Built in one pass per P2-1 (2a, then the checkpoint, then 2b). The plan's Proof tests were written before the code for each half and confirmed failing first.
+
+| # | Plan said | Implemented | Why |
+| --- | --- | --- | --- |
+| D2-1 | `CMD uvicorn app.main:app …` (Slice 0, D-4) | `uvicorn --factory app.main:create_app …`; `app.main` has no module-level `app` | Settings are read when the app is built, so a bad environment still stops startup (G-3), and importing `app.main` in tests needs no environment. |
+| D2-2 | — | `Table` creates its boto3 client lazily | Building the app must make no AWS call (`test_healthz_returns_ok_without_aws_calls` patches boto3 to fail). |
+| D2-3 | — | **The image now ships `catalog_data/` and `fixtures/`** (`.dockerignore` allowlist and `COPY` lines) | **Bug found by the 2a container check:** `/local/token` returned 500 and, worse, every guidance call on AWS would have been `RETRIEVAL_FAILURE`. Regression test: `tests/unit/test_container_contents.py`. |
+| D2-4 | Files listed per module | Added `app/runtime.py` (shared collaborators), `app/catalog/__init__.py`, `tests/contract/live.py` and `tests/contract/conftest.py` (live uvicorn harness), `tests/unit/test_container_contents.py` | Supporting files; no plan text contradicted. |
+| D2-5 | T8 substitutes approved step wording | Also: when `get_guidance` is **refused** in a turn, the server speaks the refusal's customer message (new per-reason `SAFETY_FLAG` message), plus one reviewed generic prompt where the catalog has one. The model's free text is not spoken | **Gap found by `test_at08_hazard_phrase_…`:** after a hazard, the model offered "Try turning it down" in its own words and it was spoken. FR-08 and invariant 7 require the limitation and a service offer instead. Speech precedence is: warning sign → approved step → guidance refusal → guarded model text. |
+| D2-6 | `hazards.json` lexicon | Burning-smell patterns allow words in between ("it smells like something is burning") | **Gap found by `test_at08_warning_sign_…`:** a natural elder phrasing fell through to GENERAL. Over-matching only escalates, which is the safe direction. |
+| D2-7 | `NO_APPROVED_GUIDANCE` reasons listed | Adds `SCOPE_LIMIT` (fridge and TV, with the scope-limit text and generic prompts); an open conflict on the appliance's own model record reuses `CONFLICTING_SOURCES` | The plan's list did not cover categories without model guidance (AT-33 groundwork). |
+| D2-8 | G2-7: `OPEN → TRIAGING` gets its own event | Recorded on the observation event instead (`issue_status`, `issue_prior_version`, `issue_new_version`) | The Slice 1 reviewer offered this alternative. It keeps one event per mutation, which `test_fr28_…` asserts. |
+| D2-9 | — | The error envelope carries `details` (safe values only, such as `offer` and `generic_prompts`) | The agent needs the service offer and reviewed prompts; cross-tenant tests check that no identifiers leak. |
+| D2-10 | `report_warning_sign(ctx, issue_id \| None, sign)` | Without an issue: escalation text only (`HOUSEHOLD_READ`). With an active issue: `HAZARD_REPORTED` (`ISSUE_WRITE`). A resolved or closed issue keeps its status but still gets the advice | Safety text must reach anyone in the household; changing records needs the edit grant. |
+| D2-11 | — | `AccessTokenVerifier.verify(token, required_scope=None)` skips the scope check | FastMCP then returns 403 `insufficient_scope` for a valid token without `homekeep/mcp`, rather than 401. |
+| D2-12 | `MCPClient(lambda: streamablehttp_client(…))` | `MCPClient(url=…, headers=…, tool_filters=…)`; within `with client:`, the agent gets `client.list_tools_sync()` | Strands manages an `MCPClient` passed as a tool provider itself; opening it first raised "session is currently running". The filter still applies to the listed tools. |
+
+Test-expectation corrections (the code was right; my tests were wrong):
+- Cross-tenant `resolve_appliance` as Household B returns B's own Study AC; the test now asserts that no A appliance appears.
+- An unfiltered tool (`confirm_action`) reaches the model as Strands' "Unknown tool" refusal and is never executed; the test asserts exactly that.
+- AT-10: the injected reply is replaced by the approved step's wording (the step substitution comes before the output guard); the test asserts the substitution.
+- `test_resume`'s final state check ran after the server stopped; it was moved inside.
+
+Notes:
+- Strands' MCP transport still uses the deprecated `streamablehttp_client` internally (`strands/tools/mcp/_compat.py`), which produces the deprecation warnings in the test run. HomeKeep's own code uses `streamable_http_client`.
+- Bedrock is wired but never called (G2-8). Prompt caching is not configured yet; it waits for `make eval` against real Bedrock.
+- `docs/architecture/interactions.md` needs no change: no arrow's meaning changed (`mcp-tool-contract` item 10).
+
+## Review fixes (16 Oct 2026)
+
+The `reviewer` subagent found 1 Critical and 11 Important issues. Deb chose to fix all of them, follow the TDD overlay key for #12, record token usage as deferred, and fix nits N2–N5. Every fix started with a regression test that was confirmed to fail for the reported reason.
+
+| # | Finding | Fix | Regression test |
+| --- | --- | --- | --- |
+| R1 (Critical) | The prompt's time was UTC labelled as Asia/Kolkata | `local_prompt_time()` converts once, so the date and time agree | `tests/unit/channel/test_prompt_time.py::test_inv10_prompt_uses_household_local_date_and_time` |
+| R2 | The daily cap ran before the guards, so hazard advice and "stop" were refused at the cap | Commands and hazards run first; only agent turns count toward the cap | `test_turns.py::test_fr07_guards_run_before_the_daily_cap` |
+| R3 | A hazard with no active issue flagged nothing; a failed write was lost | Without an issue: a **household safety hold** on `META` (blocks guidance; inherited by issues reported later) plus flags on every open issue the actor may edit. A failed write is retried once, logged as `HAZARD_NOT_RECORDED`, kept as `pending_hazard` on the session, and recorded at the start of the next turn | `::test_at08_hazard_without_active_issue_holds_guidance_household_wide`, `::test_at08_hazard_is_retried_when_recording_fails` |
+| R4 | The cycle cap or a failed `report_warning_sign` lost the hazard text | Speech precedence is now: warning sign (approved text from the result, or classified from the reported sign) → approved step → guidance refusal → cap → guarded model text | `::test_at08_warning_sign_spoken_even_after_cap_or_failed_call` |
+| R5 | The output guard missed many unbacked confirmations and unsafe instructions | Widened: arranged, reserved, set/fixed for, request placed or raised, "will visit/come", climb\*, chair, wires, gas, spelled-out prices | `test_guards.py::test_nfr06_output_guard` (9 new cases) |
+| R6 | Lexicon gaps (fire, "got current", burnt plastic smell, MCB trips, switchboard) | New `FIRE` hazard (checked before smoke) and widened patterns | `test_guards.py::test_fr07_hazard_guard_uses_the_lexicon` (7 new cases) |
+| R7 | Hazard text said "the AC" for any appliance | All escalation text is appliance-neutral | `test_catalog_copy.py` (no appliance named in hazard text) |
+| R8 | A retry while the original turn was in flight reran the agent; a concurrent turn on the same session failed with a conflict | T3 claims `TURN#…` (`IN_PROGRESS`) before anything else. A retry gets `STILL_WORKING` without running the agent; a crashed turn releases its claim, and a stale claim is taken over. `commit_turn` merges onto the latest checkpoint when another turn committed first | `::test_fr22_retry_while_original_in_flight_does_not_rerun_the_agent`, `test_sessions.py::test_nfr05_commit_turn_merges_after_concurrent_session_update` |
+| R9 | Blank text was accepted and broke later Bedrock turns | `text` is stripped and must be non-empty (422); blank text is never saved | `::test_blank_text_is_rejected_and_never_saved` |
+| R10 | The turn budget was not a wall clock | `anyio.move_on_after(budget + 1 s)` with `abandon_on_cancel`; the hook stops any further step; Bedrock client `connect_timeout=3`, `read_timeout=budget`, `total_max_attempts=2` | `::test_nfr01_turn_budget_is_a_wall_clock`, `test_agent_config.py::test_nfr01_bedrock_client_timeouts_fit_the_turn_budget` |
+| R11 | The `homekeep` logger was never configured; tracebacks bypassed the allowlist | `configure_logging(LOG_LEVEL)` in `create_app`: JSON lines on stderr. `log_error` logs the exception type only. **Found during the container re-check:** FastMCP configures the root logger, so every line was written twice; the `homekeep` logger no longer propagates | `test_logging.py::test_nfr07_app_configures_json_logging_at_log_level`, `::test_nfr07_each_log_line_is_written_once` |
+| R12 | The overlay key `STATUS#{item}#{version}` deviated from the TDD | Now TDD §6.1 `STATUS#{item}`, which withdraws the item (all versions) | `test_guidance.py::test_at24_withdrawn_item_blocks_new_steps` uses the TDD key |
+| N2 | The follow-up was appended after steps that already ask; "That light means" | The follow-up is added only when the step has no question; display codes say "That code means" | `test_speech.py::test_follow_up_only_after_steps_without_a_question` |
+| N3 | The `SCOPE_LIMIT` text was never spoken (D2-7 claimed it was) | Spoken, plus the first reviewed prompt | `test_speech.py::test_scope_limit_text_is_spoken_for_fridge_and_tv` |
+| N4 | The AT-08 test asserted loosely | Asserts the exact `SAFETY_FLAG` refusal message | `test_turns.py::test_at08_hazard_phrase_…` |
+| N5 | G2-7 and D2-8 changes were untested | Tests added | `test_membership.py::test_g2_7_malformed_membership_denied`, `test_tokens.py::test_g2_7_jwks_outage_is_distinct_and_bounded`, `test_observations.py::test_g2_7_first_answer_event_records_issue_triage_versions` |
+
+Test changes, beyond new tests:
+- `test_at24` uses the TDD key (R12).
+- The first logging test reads the stderr stream instead of `caplog`, because the logger no longer propagates (R11). Its assertions are unchanged.
+- The Bedrock retry assertion reads botocore's normalised `total_max_attempts`.
+
+Deferred, with Deb's agreement:
+- **TDD §4.2 T9 "record token usage"** (`USAGE#…/TURN#…`) is not built. It feeds the Ops page, which P1-1 deferred. The daily turn cap is built.
+- **Open for Slice 3 (reviewer nits not fixed now):**
+  - 401 vs 403 for authenticated-but-forbidden API calls (N1);
+  - sessions not bound to the member who created them;
+  - `record_step_result` accepting any catalog step;
+  - `conflicting_keys` ignoring the overlay;
+  - non-AC catalog failures surfacing as `RESULT_UNKNOWN`;
+  - a dedicated thread limiter for agent turns (deadlock only above 40 concurrent turns);
+  - attestation not bound to the tool name or arguments (needed for `confirm_action`);
+  - AT-11 reusing the old session;
+  - testing-instructions step 6 citing `confirm_action`;
+  - the household safety hold and issue flags are cleared only by staff (Slice 3).

@@ -98,7 +98,7 @@ def record_consent(
         operations = [
             ctx.table.put_versioned_op(new_meta, meta["version"]),
             ctx.table.put_new_op(consent_record),
-            ctx.table.put_op(
+            ctx.table.put_new_op(
                 event_item(
                     ctx,
                     action="CONSENT_RECORDED",

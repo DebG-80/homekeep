@@ -171,7 +171,7 @@ def register_appliance(
             mutations.storage_consent_check(ctx),
             ctx.table.put_new_op(item),
             ctx.table.put_new_op(sentinel),
-            ctx.table.put_op(
+            ctx.table.put_new_op(
                 event_item(
                     ctx,
                     action="APPLIANCE_REGISTERED",
@@ -286,7 +286,7 @@ def update_appliance_fact(
         operations = [
             mutations.storage_consent_check(ctx),
             ctx.table.put_versioned_op(updated, expected_version),
-            ctx.table.put_op(
+            ctx.table.put_new_op(
                 event_item(
                     ctx,
                     action="APPLIANCE_FACT_UPDATED",

@@ -1,0 +1,36 @@
+{
+  "item_id": "frostline-fl-18i",
+  "version": "v2",
+  "status": "PUBLISHED",
+  "brand": "Frostline",
+  "model": "FL-18i",
+  "category": "AC",
+  "document_id": "frostline-fl-18i-manual-v2",
+  "source": "sources/frostline-fl-18i-manual.md",
+  "reviewer": "hk-reviewer",
+  "review_date": "2026-10-01",
+  "steps": {
+    "NOT_COOLING": [
+      {"step_id": "fl18i-v2-cool-mode", "speech": "Please look at the remote and check it shows the snowflake sign. If it shows a sun or a water drop, press the Mode button until the snowflake appears.", "locator": "Section 3.2, Operating modes", "evidence": "The FL-18i cools only in COOL mode, shown by the snowflake symbol on the remote display.", "helper_only": false},
+      {"step_id": "fl18i-v2-set-temperature", "speech": "Please set the temperature on the remote to 24 degrees. Then give the room about ten minutes to cool.", "locator": "Section 3.4, Temperature setting", "evidence": "Set a temperature below the room temperature; 24 degrees is recommended. Allow 10 minutes for the room to respond.", "helper_only": false},
+      {"step_id": "fl18i-v2-doors-windows", "speech": "Please close the doors and windows of the room and draw the curtains. Is the room closed up now?", "locator": "Section 5.1, Getting the best cooling", "evidence": "Open doors, windows and direct sunlight reduce cooling noticeably.", "helper_only": false}
+    ],
+    "WEAK_AIRFLOW": [
+      {"step_id": "fl18i-v2-fan-speed", "speech": "Please press the Fan button on the remote until it shows the highest fan speed. Does more air come out now?", "locator": "Section 3.3, Fan speed", "evidence": "Fan speed cycles through Low, Medium, High and Auto with the FAN button.", "helper_only": false},
+      {"step_id": "fl18i-v2-clear-front", "speech": "Please make sure no curtains or furniture are blocking the front of the AC. Only move things you can reach easily from the floor.", "locator": "Section 5.2, Keeping air paths clear", "evidence": "Keep at least 30 cm clear in front of the indoor unit so air can flow freely.", "helper_only": false}
+    ],
+    "REMOTE_ISSUE": [
+      {"step_id": "fl18i-v2-remote-batteries", "speech": "Please put two new AAA batteries in the remote. Does the remote screen light up now?", "locator": "Section 2.1, Remote control batteries", "evidence": "The remote uses two AAA batteries. A blank display means the batteries need replacing.", "helper_only": false}
+    ],
+    "NOT_TURNING_ON": [
+      {"step_id": "fl18i-v2-wall-switch", "speech": "Please check the wall switch for the AC is turned on. If it is on and the AC still won't start, I can arrange a demo technician visit.", "locator": "Section 2.3, Power supply", "evidence": "The indoor unit needs its wall switch in the ON position.", "helper_only": false}
+    ],
+    "WATER_LEAK": [
+      {"step_id": "fl18i-v2-leak-switch-off", "speech": "Please turn the AC off with the remote and put a towel under the drip. I can arrange a demo technician visit to look at it.", "locator": "Section 6.4, Water dripping indoors", "evidence": "Water dripping from the indoor unit usually needs a service visit to clear the drain.", "helper_only": false}
+    ]
+  },
+  "error_codes": {
+    "E1": {"step_id": "fl18i-v2-e1", "speech": "That code means the room sensor needs a reset. Please switch the AC off with the remote, wait one minute, then switch it on once.", "locator": "Section 7, Display codes", "evidence": "E1: room temperature sensor fault. Restart once with the remote; if E1 returns, call service.", "helper_only": false},
+    "E3": {"step_id": "fl18i-v2-e3", "speech": "That code means the AC needs a technician to look at it. Shall I arrange a demo technician visit?", "locator": "Section 7, Display codes", "evidence": "E3: outdoor unit protection. Do not restart repeatedly; arrange service.", "helper_only": false}
+  }
+}

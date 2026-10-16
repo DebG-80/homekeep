@@ -105,12 +105,18 @@ def record_observation(
             operations.append(ctx.table.put_new_op(observation))
         else:
             operations.append(ctx.table.put_versioned_op(observation, expected_version))
+        issue_versions = None
         if issue["status"] == IssueStatus.OPEN.value:
             # The first saved intake answer starts triage (BRD §7.1: OPEN → TRIAGING).
             started = issues.transition_item(ctx, issue, IssueEvent.INTAKE_STARTED, None)
             operations.append(ctx.table.put_versioned_op(started, issue["version"]))
+            issue_versions = {
+                "issue_status": started["status"],
+                "issue_prior_version": issue["version"],
+                "issue_new_version": started["version"],
+            }
         operations.append(
-            ctx.table.put_op(
+            ctx.table.put_new_op(
                 event_item(
                     ctx,
                     action="OBSERVATION_RECORDED",
@@ -118,6 +124,7 @@ def record_observation(
                     appliance_id=issue["appliance_id"],
                     prior_version=expected_version,
                     new_version=observation["version"],
+                    extra=issue_versions,
                 )
             )
         )

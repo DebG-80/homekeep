@@ -114,7 +114,11 @@ def household_items(
                 "nickname": appliance["nickname"],
                 "nickname_key": nickname_key,
                 "room": appliance.get("room"),
-                "fields": {"brand": unknown, "model": unknown, "serial": unknown},
+                "fields": {
+                    "brand": unknown,
+                    "model": appliance.get("model", unknown),
+                    "serial": unknown,
+                },
                 "conflicts": [],
                 "created_at": seeded_at,
                 "updated_at": seeded_at,

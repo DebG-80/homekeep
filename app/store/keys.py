@@ -54,6 +54,15 @@ def observation_prefix(issue_id: str) -> str:
     return f"{ISSUE_PREFIX}{issue_id}{OBSERVATION_INFIX}"
 
 
+def step_sk(issue_id: str, timestamp: str, record_id: str, step_id: str) -> str:
+    """One record per offered step outcome (TDD §6.1 `ISSUE#{id}#STEP#{ts}#{step}`)."""
+    return f"{ISSUE_PREFIX}{issue_id}#STEP#{timestamp}#{record_id}#{step_id}"
+
+
+def step_prefix(issue_id: str) -> str:
+    return f"{ISSUE_PREFIX}{issue_id}#STEP#"
+
+
 def operation_sk(operation_key: str) -> str:
     return f"OP#{operation_key}"
 

@@ -109,3 +109,18 @@ def test_nfr04_rejects_none_and_hs256_algorithms(
     for garbage in ("", "not-a-jwt", "a.b.c"):
         with pytest.raises(DomainError):
             verifier.verify(garbage, SCOPE_API)
+
+
+def test_g2_7_jwks_outage_is_distinct_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.security.tokens import RemoteJwks
+
+    remote = RemoteJwks("https://cognito-idp.us-east-1.amazonaws.com/pool/.well-known/jwks.json")
+    assert remote._client.timeout == 3  # a JWKS stall cannot eat the turn budget
+
+    def unreachable(kid: str) -> None:
+        raise jwt.PyJWKClientConnectionError("connection refused")
+
+    monkeypatch.setattr(remote._client, "get_signing_key", unreachable)
+    with pytest.raises(DomainError) as caught:
+        remote.signing_key("kid-1")
+    assert caught.value.reason == "JWKS_UNAVAILABLE"  # an outage, not "bad token"

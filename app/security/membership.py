@@ -25,12 +25,17 @@ def resolve_actor(table: Table, token: VerifiedToken) -> Actor:
         household_id = links[0]["household_id"]
         member = table.get(keys.household_pk(household_id), keys.member_sk(token.sub))
         if member is not None and member.get("status") == ACTIVE:
+            try:
+                role = HouseholdRole(member["role"])
+                grants = frozenset(Grant(g) for g in member.get("grants", []))
+            except (KeyError, ValueError) as exc:
+                raise DomainError(ErrorCode.AUTH_DENIED, "MALFORMED_MEMBERSHIP") from exc
             return Actor(
                 sub=token.sub,
                 kind=ActorKind.HOUSEHOLD,
                 household_id=household_id,
-                role=HouseholdRole(member["role"]),
-                grants=frozenset(Grant(g) for g in member.get("grants", [])),
+                role=role,
+                grants=grants,
             )
     if groups:
         return Actor(sub=token.sub, kind=ActorKind.STAFF, groups=groups)

@@ -8,7 +8,7 @@ Several items that must change together go through one TransactWriteItems call.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any
 
@@ -53,20 +53,35 @@ def _cancellation_codes(error: ClientError) -> list[str]:
 
 
 class Table:
-    def __init__(self, client: Any, name: str) -> None:
-        self.client = client
+    def __init__(
+        self, client: Any | None, name: str, client_factory: Callable[[], Any] | None = None
+    ) -> None:
+        if client is None and client_factory is None:
+            raise ValueError("a Table needs a client or a client factory")
+        self._client = client
+        self._client_factory = client_factory
         self.name = name
+
+    @property
+    def client(self) -> Any:
+        """Created on first use, so building the app makes no AWS call (liveness stays cheap)."""
+        if self._client is None and self._client_factory is not None:
+            self._client = self._client_factory()
+        return self._client
 
     @classmethod
     def from_settings(cls, settings: Settings) -> Table:
         if not settings.table_name:
             raise ValueError("TABLE_NAME is not configured")
-        client = boto3.client(
-            "dynamodb",
-            region_name=settings.aws_region,
-            endpoint_url=settings.dynamodb_endpoint_url,  # set only when ENV=local
-        )
-        return cls(client, settings.table_name)
+
+        def factory() -> Any:
+            return boto3.client(
+                "dynamodb",
+                region_name=settings.aws_region,
+                endpoint_url=settings.dynamodb_endpoint_url,  # set only when ENV=local
+            )
+
+        return cls(None, settings.table_name, factory)
 
     # --- reads -------------------------------------------------------------------------------
 
@@ -120,6 +135,23 @@ class Table:
                 raise ConflictError((0,), reason) from exc
             raise
 
+    def increment_below(self, pk: str, sk: str, *, attribute: str, limit: int, ttl: int) -> bool:
+        """Atomically add one to a counter unless it has reached `limit`. False when it has."""
+        try:
+            self.client.update_item(
+                TableName=self.name,
+                Key=to_dynamo({"PK": pk, "SK": sk}),
+                UpdateExpression="ADD #count :one SET #ttl = :ttl",
+                ConditionExpression="attribute_not_exists(#count) OR #count < :limit",
+                ExpressionAttributeNames={"#count": attribute, "#ttl": "ttl"},
+                ExpressionAttributeValues=to_dynamo({":one": 1, ":limit": limit, ":ttl": ttl}),
+            )
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                return False
+            raise
+        return True
+
     # --- transactions ------------------------------------------------------------------------
 
     def put_op(self, item: Mapping[str, Any]) -> dict[str, Any]:
@@ -139,6 +171,26 @@ class Table:
                 "ExpressionAttributeValues": to_dynamo({":expected": expected_version}),
             }
         }
+
+    def put_if_op(
+        self,
+        item: Mapping[str, Any],
+        expression: str,
+        values: Mapping[str, Any],
+        names: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """A put guarded by an arbitrary condition (for example, a claim still in progress)."""
+        put: dict[str, Any] = {
+            **self.put_op(item)["Put"],
+            "ConditionExpression": expression,
+            "ExpressionAttributeValues": to_dynamo(values),
+        }
+        if names:
+            put["ExpressionAttributeNames"] = dict(names)
+        return {"Put": put}
+
+    def delete(self, pk: str, sk: str) -> None:
+        self.client.delete_item(TableName=self.name, Key=to_dynamo({"PK": pk, "SK": sk}))
 
     def condition_op(
         self,

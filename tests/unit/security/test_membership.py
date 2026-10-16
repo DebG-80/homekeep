@@ -93,3 +93,13 @@ def test_fr20_revoked_member_denied_on_next_request(table: Table) -> None:
         ErrorCode.AUTH_DENIED,
         "NO_ACTIVE_MEMBERSHIP",
     )
+
+
+def test_g2_7_malformed_membership_denied(table: Table) -> None:
+    _member(table, "sub-odd", "hh-a", role="SUPERUSER", grants=["view"])
+    with pytest.raises(DomainError) as caught:
+        resolve_actor(table, _token("sub-odd"))
+    assert (caught.value.code, caught.value.reason) == (
+        ErrorCode.AUTH_DENIED,
+        "MALFORMED_MEMBERSHIP",
+    )

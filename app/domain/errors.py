@@ -30,12 +30,33 @@ CUSTOMER_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.RECORD_CONFLICT: "Something changed while we were talking. Let me check again.",
     ErrorCode.APPROVAL_EXPIRED: "That confirmation has timed out. Shall I read it to you again?",
     ErrorCode.NO_APPROVED_GUIDANCE: (
-        "I don't have checked advice for this. I can arrange a technician instead."
+        "I don't have checked advice for this. I can arrange a demo technician visit instead."
     ),
     ErrorCode.SLOT_UNAVAILABLE: "That time is no longer available.",
     ErrorCode.PROVIDER_UNAVAILABLE: "The service desk isn't answering right now.",
     ErrorCode.RESULT_UNKNOWN: "I haven't heard back yet, so this is still pending.",
     ErrorCode.CONSENT_REQUIRED: "I need your permission to save this first.",
+}
+
+
+# Per-reason wording where the code's default would mislead (for example, asking the elder to
+# rephrase when nothing was misheard). Same rules as above.
+REASON_MESSAGES: dict[str, str] = {
+    "DUPLICATE_NICKNAME": "You already have one with that name. What else shall we call it?",
+    "NOT_FOUND": "I couldn't find that one. Which appliance do you mean?",
+    "UNDEFINED_TRANSITION": "I can't do that for this problem right now.",
+    "NOT_AN_ACTIVE_ISSUE": "That problem isn't open any more. Is this a new problem?",
+    "NO_INTAKE_FOR_CATEGORY": "I don't have questions for this appliance yet.",
+    "TURN_ID_REQUIRED": "Something went wrong on my side. Please try again.",
+    "UNSUPPORTED_CATEGORY": "I can help with ACs, fridges and TVs. Which one is it?",
+    "NICKNAME_REQUIRED": "What would you like to call it?",
+    "NICKNAME_TOO_LONG": "That name is a bit long. Could you give me a shorter one?",
+    "SYMPTOM_REQUIRED": "What seems to be the problem?",
+    "STALE_VERSION": "Something changed while we were talking. Let me check again.",
+    "SAFETY_FLAG": (
+        "For your safety, I won't suggest any checks now. "
+        "I'll help you get a demo technician to look at it."
+    ),
 }
 
 
@@ -50,7 +71,7 @@ class DomainError(Exception):
 
     @property
     def message(self) -> str:
-        return CUSTOMER_MESSAGES[self.code]
+        return REASON_MESSAGES.get(self.reason, CUSTOMER_MESSAGES[self.code])
 
 
 class ConflictError(DomainError):

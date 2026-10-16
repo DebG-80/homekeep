@@ -15,6 +15,7 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 LOCAL_ISSUER = "https://local-issuer.homekeep.invalid"
+LOCAL_CLIENT_ID = "homekeep-local"
 
 
 class LocalIssuer:
