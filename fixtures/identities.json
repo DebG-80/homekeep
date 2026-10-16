@@ -1,0 +1,18 @@
+{
+  "notes": "Synthetic identities (BRD §12.1, TDD §9.2). `envs` says which AWS environments get the identity; the local target seeds all of them with subjects `local-<key>`. Household roles and grants live in DynamoDB; staff roles are Cognito groups.",
+  "identities": [
+    {"key": "a_owner", "username": "hk-qa-a-owner", "household": "qa-a", "role": "OWNER", "grants": ["view", "edit", "book", "updates"], "status": "ACTIVE", "envs": ["test"]},
+    {"key": "a_helper_view", "username": "hk-qa-a-viewer", "household": "qa-a", "role": "HELPER", "grants": ["view"], "status": "ACTIVE", "envs": ["test"]},
+    {"key": "a_helper_booking", "username": "hk-qa-a-booker", "household": "qa-a", "role": "HELPER", "grants": ["view", "edit", "book", "updates"], "status": "ACTIVE", "envs": ["test"]},
+    {"key": "a_helper_revoked", "username": "hk-qa-a-revoked", "household": "qa-a", "role": "HELPER", "grants": ["view", "book"], "status": "REVOKED", "envs": ["test"]},
+    {"key": "b_owner", "username": "hk-qa-b-owner", "household": "qa-b", "role": "OWNER", "grants": ["view", "edit", "book", "updates"], "status": "ACTIVE", "envs": ["test"]},
+    {"key": "j1_owner", "username": "hk-judge-1", "household": "judge-1", "role": "OWNER", "grants": ["view", "edit", "book", "updates"], "status": "ACTIVE", "envs": ["test", "demo"]},
+    {"key": "j2_owner", "username": "hk-judge-2", "household": "judge-2", "role": "OWNER", "grants": ["view", "edit", "book", "updates"], "status": "ACTIVE", "envs": ["test", "demo"]},
+    {"key": "j3_owner", "username": "hk-judge-3", "household": "judge-3", "role": "OWNER", "grants": ["view", "edit", "book", "updates"], "status": "ACTIVE", "envs": ["test", "demo"]},
+    {"key": "tech_assigned", "username": "hk-tech-1", "groups": ["technician"], "envs": ["test", "demo"]},
+    {"key": "tech_unassigned", "username": "hk-tech-2", "groups": ["technician"], "envs": ["test"]},
+    {"key": "coordinator", "username": "hk-coordinator", "groups": ["coordinator"], "envs": ["test", "demo"]},
+    {"key": "catalog_reviewer", "username": "hk-reviewer", "groups": ["catalog_reviewer"], "envs": ["test"]},
+    {"key": "admin", "username": "hk-admin", "groups": ["admin"], "envs": ["test"]}
+  ]
+}

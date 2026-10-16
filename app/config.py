@@ -177,8 +177,9 @@ class Settings(BaseModel):
         ]
         if self.env != "local" and self.dynamodb_endpoint_url:
             problems.append("DYNAMODB_ENDPOINT_URL is allowed only when ENV=local")
-        if self.env != "test" and self.clock_override is not None:
-            problems.append("CLOCK_OVERRIDE is allowed only when ENV=test")
+        if self.env == "demo" and self.clock_override is not None:
+            # P1-3: allowed in local and test (clock-dependent E2E); never in the judges' demo.
+            problems.append("CLOCK_OVERRIDE is not allowed when ENV=demo")
         if self.env == "demo" and self.model_provider == "fake":
             problems.append("MODEL_PROVIDER=fake is allowed only when ENV is local or test")
         if (

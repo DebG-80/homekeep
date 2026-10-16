@@ -206,3 +206,50 @@ These go into `docs/HANDOFF.md` §1 as rows 16–18, into contract §9 and §16,
 - Web client, reset/purge/admin CLI, and the items P1-1 defers (Slice 4 or not at all).
 - Logging/redaction helpers (first used in Slice 2).
 - Any AWS resource creation; running the seed against AWS; commits and pushes.
+
+## Implementation deviations and notes (recorded during implementation, 16 Oct 2026)
+
+| # | Plan said | Implemented | Why |
+| --- | --- | --- | --- |
+| D1-1 | Files listed per module | Added `app/domain/mutations.py` | Every write follows the same steps: server-side operation key, replay lookup, then one transaction that includes the `OP#` record (with a concurrent-duplicate fallback) and the consent ConditionCheck. One helper keeps that identical across services. |
+| D1-2 | Shared fixtures in `tests/conftest.py` | Also `tests/unit/domain/conftest.py` and `tests/unit/domain/world.py` | The domain tests share actors, households and per-call contexts. A plain module is importable by tests, which a conftest is not. |
+| D1-3 | Issue map from BRD §7.1 | `SERVICE_PENDING` + hazard **stays** `SERVICE_PENDING` (it gains only the safety flag); other unresolved states go to `SERVICE_NEEDED` | The BRD row says "→ SERVICE_NEEDED … preserve any valid booking". Moving a confirmed booking's issue to `SERVICE_NEEDED` would make its later `VISIT_COMPLETED` an undefined transition. TDD §7 ("restricts guidance even when an appointment is pending") supports keeping the status. |
+| D1-4 | `events.py` event IDs: opaque random | Event IDs start with the real wall-clock nanoseconds and a process counter, then a random suffix | **Bug found by `test_fr28_…`:** under a fixed clock (`CLOCK_OVERRIDE`, now allowed in local by P1-3) every event shares a timestamp, so history order was random. The tiebreaker ignores the overridden clock. |
+| D1-5 | — | `record_observation`'s `expected_version` is the saved answer's own version (`None` for a first answer) | TDD §5.4 does not say whose version it is. Per-answer versions let answers to different questions proceed independently once triage has started. While the issue is still `OPEN`, two concurrent *first* answers both try to move it to `TRIAGING`, so one gets `RECORD_CONFLICT` and is retried (wording corrected after review). The first saved answer also moves the issue `OPEN` → `TRIAGING` in the same transaction (BRD §7.1, "assistant starts approved intake"). |
+| D1-6 | — | Store raises `ConflictError`, a subclass of `DomainError` (`RECORD_CONFLICT`) carrying `failed_indexes`; services map an index to a specific error (consent → `CONSENT_REQUIRED`, nickname sentinel → `DUPLICATE_NICKNAME`) | Keeps the store generic while the domain still gives precise errors. |
+| D1-7 | Order of work step 5: "Write the AT tests first" | The services were written first, then the AT tests | A process slip. To compensate, every AT test asserts on stored items (scans and snapshots) rather than only on return values. Two tests caught real problems: D1-4, and a wrong expectation of mine (below). |
+| D1-8 | `.env.example` not listed | Its `CLOCK_OVERRIDE` comment now says "local or test only" | Keeps it consistent with P1-3. |
+
+Notes:
+- **Same turn, different arguments, is a different operation.** TDD §5.5 builds the key from the arguments too, so one turn can register two appliances. A test of mine first expected `RECORD_CONFLICT` there. The test was wrong and was corrected; the code follows the TDD. The "same key, different payload" conflict is covered at store level (`test_ops.py`) and matters for keys that exclude the payload, such as Slice 3's `execute_action`.
+- **Demo seed set:** `--env demo` gets J1–J3, one technician (`hk-tech-1`) and one coordinator (TDD §9.2). `--env test` gets every identity.
+- **Real-engine check:** `make run` seeded DynamoDB Local (35 items), and a second `make seed` created 0. A scratch script ran against DynamoDB Local and showed the same results as moto, so the moto-fidelity risk is retired: transaction cancellation indexes `(1,)`, `CancellationReasons` present, stale version → `STALE_VERSION`, consent gate → `CONSENT_REQUIRED`, duplicate nickname → `DUPLICATE_NICKNAME`, and intake resuming at `airflow`.
+- **Extra tests beyond Proof:** `test_table.py::test_round_trip_keeps_types`, `test_clock.py::test_inv10_clock_override_drives_the_clock`, `test_seed.py::test_local_target_refuses_non_local_endpoints`.
+- Contract §14.1 (how to run the AWS seed, and the operator permissions it needs) and a §15 tick box were added under the plan's "§14" item.
+
+## Review fixes (16 Oct 2026)
+
+The `reviewer` subagent found no Critical issues. Deb chose to fix R1–R4 and the seed-target nit now, accept D1-3, and leave the other nits for Slice 2. Each fix started with a regression test that was confirmed to fail for the reported reason.
+
+| # | Finding | Fix | Regression test |
+| --- | --- | --- | --- |
+| R1 | Repeating a verified (or document-backed) value downgraded it to `USER_REPORTED` | A strong value stands; only a different, known claim is recorded, as a conflict; an equal value or "not sure" changes nothing | `test_appliances.py::test_fr03_repeating_or_unknown_claim_never_downgrades_verified_value` |
+| R2 | A retry that read the ledger just before the original committed could trip over the original's own write and give the wrong answer (`DUPLICATE_NICKNAME`, `STALE_VERSION` or `NEEDS_CHOICE`). This affected **every** mutation, not only nicknames | New `mutations.run`: if a service body raises, or returns without committing, it reads the ledger again and replays the original's stored result. All six services now go through it | `test_mutations.py::test_inv5_retry_racing_the_original_commit_replays_for_every_mutation`; `::test_inv5_commit_returns_stored_result_when_a_duplicate_committed_first` covers the commit fallback that was untested |
+| R3 | Under a fixed clock, a second consent decision for the same purpose collided on its key and failed with a raw conflict | Consent SK is `CONSENT#{purpose}#{ts}#{ordered_id}` (the TDD §6.1 prefix is unchanged); `ordered_id` moved to `domain/ids.py` and is shared with events; `record_consent` maps conflicts to `RECORD_CONFLICT/STALE_VERSION` | `test_household.py::test_fr01_consent_can_change_twice_at_one_fixed_instant` |
+| R4 | The AWS seed printed passwords only after everything succeeded, so a failure lost them; the only recovery rotated every password | Each password is printed the moment Cognito holds it (right after create, before it is made permanent). A preflight checks the table, the pool and the groups before creating anyone. `--reset-passwords [USERNAME ...]` rotates only the named users | `test_seed.py::test_seed_aws_prints_each_password_before_any_later_failure`, `::test_seed_aws_preflight_refuses_before_creating_users`, `::test_seed_aws_resets_only_named_users` |
+| Nit (seed target) | The AWS target never showed or confirmed what it would write to | It prints the account, region, pool name and ID, table and env, and writes nothing without `--yes`. It refuses unless the table and pool names end in `-{env}` (contract §2) | `test_seed.py::test_seed_aws_main_shows_target_and_requires_yes_and_env_names` |
+| D1-3 | The SERVICE_PENDING + hazard interpretation was not mirrored in HANDOFF | Accepted by Deb; HANDOFF row 19; the state-map test now labels it as an accepted interpretation | — |
+
+Two existing seed tests changed mechanically because the seed API changed: `out=` is passed to `seed_aws` (passwords now print there), and `reset=[]` replaces `reset_passwords=True`. Their assertions are unchanged.
+
+Open for Slice 2 (reviewer nits, not fixed now):
+- The first intake answer's `OPEN → TRIAGING` change has no event of its own.
+- `RemoteJwks` timeout and outage mapping (use about 3 s; report a distinct reason for connection errors).
+- Per-reason customer messages for `INVALID_INPUT` and a rule test for `CUSTOMER_MESSAGES`.
+- "Not sure" can wipe an earlier user-reported value.
+- Events are written with an unconditional put; `put_new` would enforce append-only at store level.
+- The duplicate-issue race in `report_issue` (no active-issue sentinel).
+- `resolve_actor` raises `ValueError` rather than `AUTH_DENIED` on a malformed role or grant.
+- `test_inv9` only proves "never written" for the working directory.
+- Fixture IDs are readable, not opaque.
+- A second hazard overwrites `safety_reason`.

@@ -10,18 +10,22 @@ from app.config import ConfigError, Settings
 from app.main import create_app
 
 
-def test_inv10_clock_override_rejected_outside_test_env(demo_env: dict[str, str]) -> None:
-    override = "2026-10-20T18:29:00+00:00"
-    for env in (
-        {**demo_env, "CLOCK_OVERRIDE": override},
+def test_inv10_clock_override_rejected_in_demo_env(demo_env: dict[str, str]) -> None:
+    # P1-3 (Slice 1): allowed in local and test; the judges' demo never runs on a fixed clock.
+    with pytest.raises(ConfigError, match="CLOCK_OVERRIDE is not allowed when ENV=demo"):
+        Settings.from_env({**demo_env, "CLOCK_OVERRIDE": "2026-10-20T18:29:00+00:00"})
+
+
+def test_inv10_clock_override_accepted_in_local_env() -> None:
+    # P1-3: clock-dependent E2E (AT-13 expiry, AT-34 rollover) runs against `make run`.
+    settings = Settings.from_env(
         {
             "ENV": "local",
             "DYNAMODB_ENDPOINT_URL": "http://localhost:8001",
-            "CLOCK_OVERRIDE": override,
-        },
-    ):
-        with pytest.raises(ConfigError, match="CLOCK_OVERRIDE is allowed only when ENV=test"):
-            Settings.from_env(env)
+            "CLOCK_OVERRIDE": "2026-10-20T18:29:00+00:00",
+        }
+    )
+    assert settings.clock_override == datetime(2026, 10, 20, 18, 29, tzinfo=UTC)
 
 
 def test_inv10_clock_override_rejected_at_app_startup(

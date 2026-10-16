@@ -21,6 +21,10 @@ Written 29 September 2026; updated 4 October 2026 to adopt the AI-native SDLC wo
 | 13 | **Web client config at runtime** (14 Oct, P0-5): `GET /config.json` serves public Cognito config (domain, client ID, scopes) from env vars. Route lands in Slice 4; variable names fixed now | New; the TDD is silent. |
 | 14 | **Product feedback covers Amazon/AWS tools plus the MCP tools** (14 Oct, P0-6), 13 sections in `docs/product-feedback.md` | — |
 | 15 | **`docs/submission/feature-requests.md` holds requests to Amazon** (14 Oct, P0-7), each cross-linked to a friction-log entry | — |
+| 16 | **Scope is the BRD §3.3 minimum coherent release** (16 Oct, P1-1): register → report → guide or escalate → approved demo booking → resume → change → completion → customer confirms → history, plus the unknown-model and verified-model paths. All integrity and authorisation controls stay. Deferred unless time remains: FR-19 reminders, FR-04 documents and the S3 flow, the Ops page, the formal AT-29 load run, `evals.yml`, `smoke.yml` | Narrows decision 1 and the §6 Slice 4 content. Recorded in `plans/slice-1.md`. |
+| 17 | **All seeding lands in Slice 1** (16 Oct, P1-2): fixtures, local table creation and `make seed`, plus `scripts/seed.py --target aws` (Cognito users, then memberships), run only by Deb | TDD §11.5 implied Slice 4. |
+| 18 | **`CLOCK_OVERRIDE` allowed in `local` and `test`, refused in `demo`** (16 Oct, P1-3) | Deviates from TDD §4.5 and Slice 0 G-3; closes Slice 0 open item 4. |
+| 19 | **A hazard on a `SERVICE_PENDING` issue keeps `SERVICE_PENDING`** and only sets the safety flag (16 Oct, D1-3); other unresolved states go to `SERVICE_NEEDED` | Interprets BRD §7.1 ("→ SERVICE_NEEDED … preserve any valid booking"): otherwise the preserved booking's `VISIT_COMPLETED` would be undefined. Supported by TDD §7. Recorded in `plans/slice-1.md`. |
 
 ## 2 Platform facts verified (25–26 Sep 2026; recheck before submission)
 

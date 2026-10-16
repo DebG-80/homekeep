@@ -1,0 +1,35 @@
+{
+  "notes": "Synthetic households (BRD §12.1, TDD §9.2). Judge households J1-J3 start with no consent and no appliances so a judge walks the whole journey (G1-2). All names are fictional; no addresses or contact details are seeded.",
+  "seeded_at": "2026-10-01T00:00:00.000000Z",
+  "consent_version": "consent-v1",
+  "households": [
+    {
+      "household_id": "qa-a",
+      "label": "Household A (QA)",
+      "envs": ["test"],
+      "resettable": false,
+      "storage_consent": "GRANTED",
+      "sharing_consent": "GRANTED",
+      "appliances": [
+        {"appliance_id": "qa-a-ac-bedroom", "category": "AC", "nickname": "Bedroom AC", "room": "bedroom"},
+        {"appliance_id": "qa-a-ac-hall", "category": "AC", "nickname": "Hall AC", "room": "hall"},
+        {"appliance_id": "qa-a-fridge", "category": "REFRIGERATOR", "nickname": "Kitchen fridge", "room": "kitchen"},
+        {"appliance_id": "qa-a-tv", "category": "TELEVISION", "nickname": "Living room TV", "room": "living room"}
+      ]
+    },
+    {
+      "household_id": "qa-b",
+      "label": "Household B (QA, cross-tenant tests)",
+      "envs": ["test"],
+      "resettable": false,
+      "storage_consent": "GRANTED",
+      "sharing_consent": "DECLINED",
+      "appliances": [
+        {"appliance_id": "qa-b-ac-study", "category": "AC", "nickname": "Study AC", "room": "study"}
+      ]
+    },
+    {"household_id": "judge-1", "label": "Judge household J1", "envs": ["test", "demo"], "resettable": true, "storage_consent": null, "sharing_consent": null, "appliances": []},
+    {"household_id": "judge-2", "label": "Judge household J2", "envs": ["test", "demo"], "resettable": true, "storage_consent": null, "sharing_consent": null, "appliances": []},
+    {"household_id": "judge-3", "label": "Judge household J3", "envs": ["test", "demo"], "resettable": true, "storage_consent": null, "sharing_consent": null, "appliances": []}
+  ]
+}

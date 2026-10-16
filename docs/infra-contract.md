@@ -298,7 +298,7 @@ Trust principal `ecs.amazonaws.com`, with the AWS managed policy `service-role/A
 | `ALLOWED_ORIGINS` | test, demo | `https://<APP_DOMAIN>` | the value of `APP_BASE_URL` when `ENV=local` | Comma-separated origins accepted by the browser API and the `/mcp` Origin check. Each one is normalised like `APP_BASE_URL`; all must be `https` in `demo` |
 | `MCP_LOOPBACK_URL` | — | `http://127.0.0.1:8000/mcp` | `http://127.0.0.1:${PORT}/mcp` | URL the orchestrator uses to call its own MCP server inside the task |
 | `FAULTS_ENABLED` | — | `false` | `false` | Enables the admin-only provider fault injection (TDD §4.6) |
-| `CLOCK_OVERRIDE` | — | `2026-10-20T18:29:00+00:00` | — | Fixed "now" as an ISO-8601 time with an offset. **Allowed only when `ENV=test`**; the app refuses to start if it is set elsewhere (G-3) |
+| `CLOCK_OVERRIDE` | — | `2026-10-20T18:29:00+00:00` | — | Fixed "now" as an ISO-8601 time with an offset. **Allowed only when `ENV` is `local` or `test`**; the app refuses to start if it is set in `demo` (G-3, P1-3) |
 | `DAILY_TURN_CAP` | — | `300` | `300` | Turns per household per day (NFR-12) |
 | `MAX_TOOL_CYCLES` | — | `12` | `12` | Model/tool cycles per turn (NFR-12) |
 | `TURN_BUDGET_SECONDS` | — | `20` | `20` | Wall-clock budget for one turn |
@@ -349,7 +349,23 @@ In `us-east-1`, open Bedrock → Model access and enable **Anthropic Claude Haik
 | App URL (the Express Mode HTTPS domain) | `APP_BASE_URL` and `ALLOWED_ORIGINS` in the ECS environment; the Cognito `web` callback and sign-out URLs; the S3 CORS rule; Devpost "Testing instructions" (the field, not `docs/submission/testing-instructions.md`) |
 | MCP URL (`${APP_BASE_URL}/mcp`) | Devpost testing instructions field; MCP Inspector |
 | ECR repository URI | Your shell when tagging and pushing an image |
-| Judge usernames and passwords (Slice 4 seed) | Password manager and the Devpost field only |
+| Judge and QA usernames and passwords (printed once by the seed, §14.1) | Password manager, and the Devpost testing field for the judge logins only |
+
+### 14.1 Seeding users and households
+
+After the table and the user pool (with its four groups) exist, seed them from your machine with your own admin credentials (never the task role):
+
+```bash
+TABLE_NAME=<TABLE_NAME> COGNITO_USER_POOL_ID=<COGNITO_USER_POOL_ID> AWS_REGION=us-east-1 \
+  uv run python -m scripts.seed --target aws --env test   # or --env demo
+```
+
+The first run only prints the target (account, region, pool name and ID, table, env) and writes nothing. Check it, then re-run with `--yes`. It refuses outright unless the table and pool names end in `-test` or `-demo` matching `--env` (§2), and it checks that the table, the pool and the four groups exist before creating anyone.
+
+- `--env test` creates the QA households A and B, the judge households J1–J3, and every QA and staff identity. `--env demo` creates J1–J3, one technician and one coordinator.
+- It creates each Cognito user with a random **permanent** password (no first-login change for judges), adds staff to their groups, then writes the DynamoDB items. Each password is printed **once**, to your terminal, the moment Cognito accepts it, so a later failure cannot lose it. Passwords are stored nowhere else.
+- Re-running only fills in what is missing; it never overwrites data. `--reset-passwords hk-judge-2` issues a new password for the named users only; `--reset-passwords` with no names rotates every seeded user.
+- Your credentials need `sts:GetCallerIdentity`; `cognito-idp:DescribeUserPool`, `ListGroups`, `AdminGetUser`, `AdminCreateUser`, `AdminSetUserPassword` and `AdminAddUserToGroup` on the pool; and `dynamodb:DescribeTable` and `PutItem` on the table.
 
 ## 15 Owner verification checklist
 
@@ -364,6 +380,7 @@ In `us-east-1`, open Bedrock → Model access and enable **Anthropic Claude Haik
 - [ ] Cognito: self sign-up is off; token lifetimes read 60 min / 60 min / 1 day on both clients.
 - [ ] The log group retention reads 30 days.
 - [ ] The budget and its three alerts exist.
+- [ ] The seed (§14.1) ran, its passwords are in the password manager, and one judge login works through managed login.
 - [ ] No real value from this checklist was pasted into the repository.
 
 ## 16 Deviations from the TDD
@@ -376,4 +393,4 @@ The TDD stays read-only; these are recorded here and in HANDOFF §1.
 | P0-3 | Node 24 LTS in the image, `.nvmrc` and README | §11.5 step 1 (Node 20) | Node 20 has been end of life since 30 April 2026 |
 | P0-4 | Task role adds `dynamodb:ConditionCheckItem`, `s3:ListBucket` (prefix-conditioned) and `cognito-idp:AdminDisableUser`, and lists no `dynamodb:TransactWriteItems` | §11.2 | `ConditionCheckItem`: the condition checks inside booking transactions (TDD §6.2) need it, and IAM authorises transactions per item action. `ListBucket`: purge must find a household's objects under both prefixes (FR-24). `AdminDisableUser`: purge disables the household's Cognito users (TDD §6.2) |
 | P0-5 | The web client gets its public Cognito config (domain, client ID, scopes) at runtime from `GET /config.json`, built from the env vars in §9. The route lands in Slice 4 | Not covered by the TDD | One image serves both environments; nothing environment-specific is baked into the web bundle |
-| G-3 | `CLOCK_OVERRIDE` set outside `ENV=test` stops the app at startup instead of being ignored | §4.5 ("honoured only when `ENV=test`") | Silently ignoring it would hide a misconfiguration |
+| G-3, P1-3 | `CLOCK_OVERRIDE` is allowed in `local` and `test` and stops the app at startup in `demo`, instead of being ignored | §4.5 ("honoured only when `ENV=test`") | Silently ignoring it would hide a misconfiguration. P1-3 (16 Oct) also allows `local`, so clock-dependent E2E (AT-13 expiry, AT-34 rollover) runs against `make run`; `local` never runs on AWS |

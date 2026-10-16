@@ -19,7 +19,8 @@ Prerequisites:
 | `make lint` | ruff check, ruff format check and the web typecheck |
 | `make fmt` | Applies ruff fixes and formatting |
 | `make test` | Unit and contract tests (pytest) |
-| `make run` | Starts the app on http://localhost:8000 with DynamoDB Local on :8001 (`ENV=local`); try `curl localhost:8000/healthz` |
+| `make run` | Starts the app on http://localhost:8000 with DynamoDB Local on :8001 (`ENV=local`) and seeds it; try `curl localhost:8000/healthz` |
+| `make seed` | Creates the local table and loads the synthetic households and identities into DynamoDB Local (safe to re-run) |
 | `make stop` | Stops the local stack |
 | `make build` | Builds the `linux/arm64` image `homekeep:local` |
 | `make audit` | Known-vulnerability scan of the Python and web dependencies |
@@ -28,7 +29,7 @@ Prerequisites:
 
 ## Deploying to AWS
 
-There is no infrastructure-as-code in this release. Provision the AWS resources by following [`docs/infra-contract.md`](docs/infra-contract.md): it lists every resource, setting, IAM policy and environment variable the app expects, plus a verification checklist.
+There is no infrastructure-as-code in this release. Provision the AWS resources by following [`docs/infra-contract.md`](docs/infra-contract.md): it lists every resource, setting, IAM policy and environment variable the app expects, plus a verification checklist. Then seed the users and households with `uv run python -m scripts.seed --target aws --env <test|demo>` (contract §14.1). The first run shows the target and writes nothing; re-run with `--yes`. Each new password is printed once.
 
 ## Hackathon submission
 

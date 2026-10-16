@@ -1,0 +1,23 @@
+{
+  "category": "AC",
+  "version": "ac-intake-v1",
+  "notes": "Approved AC intake questions (FR-06). Asked one at a time; every question accepts 'not sure'. Questions never ask the elder to reach, climb, open covers or read a hard-to-see label. Warning signs are screened by the hazard guard and hazards.json (Slice 2), not here.",
+  "questions": [
+    {
+      "field": "onset",
+      "question": "When did this problem start? A rough idea is fine."
+    },
+    {
+      "field": "airflow",
+      "question": "Can you feel any air coming from the AC from where you are? It's fine to say you're not sure."
+    },
+    {
+      "field": "display_code",
+      "question": "Can you easily see any letters or numbers lit up on the AC? Only if you can see them from where you are."
+    },
+    {
+      "field": "remote_response",
+      "question": "Does the AC beep or light up when you press the remote? It's fine to say you're not sure."
+    }
+  ]
+}

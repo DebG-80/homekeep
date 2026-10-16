@@ -31,7 +31,8 @@ HomeKeep lets elders in Indian households get appliance help by voice, without i
 - `make test`: unit + contract tests (pytest, moto, fake model). Must exit 0.
 - `make lint`: ruff check and format check, plus the web typecheck; zero findings.
 - `make fmt`: apply ruff fixes and formatting.
-- `make run`: local app on :8000 with DynamoDB Local and the fake model (`ENV=local`). `make stop` stops it.
+- `make run`: local app on :8000 with DynamoDB Local and the fake model (`ENV=local`), seeded. `make stop` stops it.
+- `make seed`: create the local table and load the synthetic fixtures (DynamoDB Local only). The AWS seed is Deb's (contract §14.1).
 - `make build`: the `linux/arm64` image `homekeep:local`.
 - `make audit`: pip-audit on the lock plus `npm audit`.
 - `make e2e`: Playwright text-path tests against `make run`. Stub until Slice 4 (exits 2).
@@ -61,7 +62,7 @@ Run `make lint` and `make test` before reporting any task complete, and paste th
 7. **Guidance only for a VERIFIED exact model with a PUBLISHED item**; otherwise `NO_APPROVED_GUIDANCE` with a reason. No vector search.
 8. **Technician completion never resolves an issue**; only the customer's answer does.
 9. **No secrets or real identifiers** in the repo (public). Fictional catalog only ("Frostline FL-18i"). Logs follow the TDD §10.2 allowlist.
-10. **Times are stored in UTC and spoken in Asia/Kolkata**, as absolute dates. `CLOCK_OVERRIDE` only when `ENV=test`.
+10. **Times are stored in UTC and spoken in Asia/Kolkata**, as absolute dates. `CLOCK_OVERRIDE` only when `ENV` is local or test; never in demo.
 
 Project skills apply automatically: `elder-voice-copy` (anything the elder hears) and `mcp-tool-contract` (any tool change).
 
@@ -69,4 +70,4 @@ Project skills apply automatically: `elder-voice-copy` (anything the elder hears
 
 Add an entry the second time the same mistake happens: `- <mistake> → <correct behaviour> (date)`.
 
-- (none yet)
+- Wrote the implementation before the plan's named tests or the regression test (Slice 0 review fixes; Slice 1 services) → write those tests first, run them and confirm each fails for the expected reason, then write the code (2026-10-16)

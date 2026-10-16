@@ -6,7 +6,7 @@ IMAGE ?= homekeep:local
 UV_RUN := uv run --locked
 WEB_DEPS := web/node_modules/.package-lock.json
 
-.PHONY: help sync lint fmt test run stop build audit e2e eval
+.PHONY: help sync lint fmt test run stop seed build audit e2e eval
 
 help: ## List the targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -30,9 +30,13 @@ fmt: ## Apply ruff fixes and formatting
 test: ## Unit and contract tests
 	$(UV_RUN) pytest
 
-run: ## Local app on :8000 with DynamoDB Local on :8001 (ENV=local)
+run: ## Local app on :8000 with DynamoDB Local on :8001 (ENV=local), seeded
 	docker compose up --build --detach --wait
+	@$(MAKE) --no-print-directory seed
 	@echo "HomeKeep: http://localhost:8000/healthz  (stop with: make stop)"
+
+seed: ## Create the local table and load the synthetic fixtures into DynamoDB Local
+	$(UV_RUN) python -m scripts.seed --target local
 
 stop: ## Stop the local app and DynamoDB Local
 	docker compose down
