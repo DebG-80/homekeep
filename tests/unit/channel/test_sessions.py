@@ -27,9 +27,25 @@ def test_nfr05_commit_turn_merges_after_concurrent_session_update(table: Table) 
     assert sessions.claim_turn(table, session, "turn-2", NOW) is None
     response = sessions.commit_turn(table, session, "turn-2", {"speech": ["second"]}, mine, NOW)
     assert response == {"speech": ["second"]}
-    stored = sessions.load_session(table, HH_A, session["session_id"])
+    stored = sessions.load_session(table, HH_A, session["session_id"], "sub-a")
     assert [m["text"] for m in stored["messages"]] == ["one", "first", "two", "second"]
     assert stored["active_issue_id"] == "issue-9"
     assert sessions.stored_turn(table, HH_A, session["session_id"], "turn-1") == {
         "speech": ["first"]
     }
+
+
+def test_g3_9_another_members_session_is_not_found(table: Table) -> None:
+    import pytest
+
+    from app.domain.errors import DomainError
+
+    put_household(table, HH_A)
+    session = sessions.create_session(table, HH_A, "sub-owner", NOW)
+    assert (
+        sessions.load_session(table, HH_A, session["session_id"], "sub-owner")["session_id"]
+        == session["session_id"]
+    )
+    with pytest.raises(DomainError) as caught:
+        sessions.load_session(table, HH_A, session["session_id"], "sub-helper")  # same household
+    assert caught.value.reason == "NOT_FOUND"

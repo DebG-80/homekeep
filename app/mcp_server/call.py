@@ -40,6 +40,7 @@ async def run_tool(
     fn: Callable[..., Any],
     *args: Any,
     trusted: bool = False,
+    attested_args: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     request = mcp_ctx.request_context.request
@@ -58,7 +59,14 @@ async def run_tool(
         verified = verified_from(access)
         try:
             if trusted:
-                runtime.attestor.verify(attestation, verified.sub, session_id or "", turn_id)
+                runtime.attestor.verify(
+                    attestation,
+                    verified.sub,
+                    session_id or "",
+                    turn_id,
+                    action,
+                    attested_args or {},
+                )
             actor = resolve_actor(runtime.table, verified)
         except DomainError as error:
             return _bare_failure(correlation_id, error)
@@ -69,6 +77,7 @@ async def run_tool(
             correlation_id=correlation_id,
             turn_id=turn_id,
             session_id=session_id,
+            faults_enabled=runtime.settings.faults_enabled,
         )
         try:
             data = fn(ctx, *args, **kwargs)

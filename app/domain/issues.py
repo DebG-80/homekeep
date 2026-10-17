@@ -12,7 +12,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.catalog.hazards import classify
-from app.domain import appliances, mutations
+from app.domain import appliances, mutations, refs
 from app.domain.clock import iso_utc
 from app.domain.context import OperationContext
 from app.domain.errors import ConflictError, DomainError, ErrorCode
@@ -63,6 +63,7 @@ def view(item: dict[str, Any]) -> dict[str, Any]:
         "status": item["status"],
         "safety_flag": item["safety_flag"],
         "safety_reason": item.get("safety_reason"),
+        "reopen_reason": item.get("reopen_reason"),
         "version": item["version"],
     }
 
@@ -142,6 +143,24 @@ def report_issue(
         if continue_issue_id is not None:
             chosen = [i for i in active if i["issue_id"] == continue_issue_id]
             if not chosen:
+                previous = ctx.table.get(
+                    keys.household_pk(ctx.household_id), keys.issue_sk(continue_issue_id)
+                )
+                if (
+                    previous
+                    and previous.get("kind") == "ISSUE"
+                    and previous["appliance_id"] == appliance_id
+                    and previous["status"] == IssueStatus.CLOSED.value
+                ):
+                    # The same problem came back: reopen it; its history is kept (G3-7).
+                    reopened = apply_issue_event(
+                        ctx,
+                        continue_issue_id,
+                        IssueEvent.RECURRED,
+                        previous["version"],
+                        reopen_reason=wording,
+                    )
+                    return {"outcome": "REOPENED", "issue": reopened}
                 raise DomainError(ErrorCode.INVALID_INPUT, "NOT_AN_ACTIVE_ISSUE")
             return {"outcome": "CONTINUED", "issue": view(chosen[0])}
         if active and not confirmed_distinct:
@@ -171,6 +190,16 @@ def report_issue(
         operations = [
             mutations.storage_consent_check(ctx),
             ctx.table.put_new_op(item),
+            ctx.table.put_new_op(
+                refs.ref_item(
+                    issue_id,
+                    ctx.household_id,
+                    "ISSUE",
+                    item["SK"],
+                    index="SAFETY" if item["safety_flag"] else None,
+                    sort=now,
+                )
+            ),
             ctx.table.put_new_op(
                 event_item(
                     ctx,
@@ -217,6 +246,7 @@ def apply_issue_event(
     event: IssueEvent,
     expected_version: int,
     safety_reason: str | None = None,
+    reopen_reason: str | None = None,
 ) -> dict[str, Any]:
     if event not in CUSTOMER_EVENTS:
         # Invariant 8: a household member can never fire a technician or provider outcome.
@@ -228,6 +258,7 @@ def apply_issue_event(
         "event": event.value,
         "expected_version": expected_version,
         "safety_reason": safety_reason,
+        "reopen_reason": reopen_reason,
     }
 
     def body(mutation: mutations.Mutation) -> Any:
@@ -236,9 +267,12 @@ def apply_issue_event(
         if item["version"] != expected_version:
             raise DomainError(ErrorCode.RECORD_CONFLICT, "STALE_VERSION")
         updated = transition_item(ctx, item, event, safety_reason)
+        if event is IssueEvent.RECURRED and reopen_reason:
+            updated["reopen_reason"] = reopen_reason  # FR-17-AC2: reopened with a reason
         operations = [
             mutations.storage_consent_check(ctx),
             ctx.table.put_versioned_op(updated, expected_version),
+            ctx.table.put_op(issue_ref(ctx, updated)),
             ctx.table.put_new_op(
                 event_item(
                     ctx,
@@ -323,10 +357,16 @@ def set_safety_hold(ctx: OperationContext, reason: str) -> None:
             raise DomainError(ErrorCode.AUTH_DENIED, "HOUSEHOLD_NOT_FOUND")
         if meta.get("safety_hold"):
             return {"safety_hold": meta["safety_hold"]}  # already held; keep the first reason
-        hold = {"reason": reason, "at": iso_utc(ctx.clock.now()), "actor_sub": ctx.actor.sub}
+        now = iso_utc(ctx.clock.now())
+        hold = {"hold_id": new_id(), "reason": reason, "at": now, "actor_sub": ctx.actor.sub}
         updated = {**meta, "safety_hold": hold, "version": meta["version"] + 1}
         operations = [
             ctx.table.put_versioned_op(updated, meta["version"]),
+            ctx.table.put_new_op(
+                refs.ref_item(
+                    hold["hold_id"], ctx.household_id, "HOLD", keys.META, index="SAFETY", sort=now
+                )
+            ),
             ctx.table.put_new_op(
                 event_item(
                     ctx,
@@ -349,3 +389,54 @@ def set_safety_hold(ctx: OperationContext, reason: str) -> None:
 def household_safety_hold(ctx: OperationContext) -> dict[str, Any] | None:
     meta = ctx.table.get(keys.household_pk(ctx.household_id), keys.META)
     return (meta or {}).get("safety_hold")
+
+
+def issue_ref(ctx: OperationContext, item: dict[str, Any]) -> dict[str, Any]:
+    """The issue's opaque reference; flagged issues are on the coordinator's safety list."""
+    return refs.ref_item(
+        item["issue_id"],
+        ctx.household_id,
+        "ISSUE",
+        keys.issue_sk(item["issue_id"]),
+        index="SAFETY" if item.get("safety_flag") else None,
+        sort=item.get("updated_at"),
+    )
+
+
+def confirm_resolution(
+    ctx: OperationContext, issue_id: str, answer: str, close: bool = False
+) -> dict[str, Any]:
+    """The customer's own answer (FR-17; invariant 8): only this resolves an issue. Closing is a
+    separate, explicit request; a visit still booked is mentioned, never cancelled silently."""
+    authorize(ctx.actor, Action.RESOLUTION_CONFIRM, ctx.household_id)
+    if answer not in ("RESOLVED", "PERSISTS", "UNSURE"):
+        raise DomainError(ErrorCode.INVALID_INPUT, "UNKNOWN_ANSWER")
+    item = load(ctx, issue_id)
+    status = IssueStatus(item["status"])
+    if answer == "RESOLVED" and status is not IssueStatus.RESOLVED:
+        item_view = apply_issue_event(
+            ctx, issue_id, IssueEvent.CUSTOMER_CONFIRMED_RESOLVED, item["version"]
+        )
+    elif answer == "PERSISTS" and status in (IssueStatus.AWAITING_CUSTOMER, IssueStatus.RESOLVED):
+        item_view = apply_issue_event(
+            ctx, issue_id, IssueEvent.CUSTOMER_SAYS_PERSISTS, item["version"]
+        )
+    else:
+        item_view = view(item)  # "not sure", or nothing to change: no state change
+    closed = False
+    if close and answer == "RESOLVED" and item_view["status"] == IssueStatus.RESOLVED.value:
+        item_view = apply_issue_event(
+            ctx, issue_id, IssueEvent.CUSTOMER_CLOSED, item_view["version"]
+        )
+        closed = True
+    booked = [
+        r
+        for r in ctx.table.query(keys.household_pk(ctx.household_id), keys.REQUEST_PREFIX)
+        if r.get("kind") == "SR" and r["issue_id"] == issue_id and r["state"] == "CONFIRMED"
+    ]
+    return {
+        "answer": answer,
+        "issue": item_view,
+        "closed": closed,
+        "uncancelled_visit": bool(booked),
+    }

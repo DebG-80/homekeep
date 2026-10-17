@@ -11,7 +11,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from app.domain import appliances, guidance, issues, overview
+from app.domain import appliances, approvals, guidance, history, issues, overview, service
 from app.mcp_server.call import run_tool
 from app.runtime import Runtime
 
@@ -154,4 +154,95 @@ def register(mcp: FastMCP, runtime: Runtime) -> None:
             issue_id,
             step_id,
             result,
+        )
+
+    @mcp.tool()
+    async def draft_service_request(issue_id: str, ctx: Context) -> dict[str, Any]:
+        """Start (or reopen the open) service request for an issue. Returns the draft and which of
+        address and contact are still missing; ask for those only now."""
+        return await run_tool(
+            runtime, ctx, "draft_service_request", service.draft_service_request, issue_id
+        )
+
+    @mcp.tool()
+    async def record_service_details(
+        request_id: str, field: str, value: str, expected_version: int, ctx: Context
+    ) -> dict[str, Any]:
+        """Save the service address (field "address") or contact route (field "contact") exactly
+        as the user dictated it, after reading it back to them."""
+        return await run_tool(
+            runtime,
+            ctx,
+            "record_service_details",
+            service.record_service_details,
+            request_id,
+            field,
+            value,
+            expected_version,
+        )
+
+    @mcp.tool()
+    async def list_slots(
+        request_id: str, ctx: Context, from_date: str | None = None, days: int = 3
+    ) -> dict[str, Any]:
+        """Demo visit slots from the household's local date (or from_date, YYYY-MM-DD).
+        Listing does not reserve anything."""
+        return await run_tool(
+            runtime,
+            ctx,
+            "list_slots",
+            service.list_slots,
+            request_id,
+            from_date=from_date,
+            days=days,
+        )
+
+    @mcp.tool()
+    async def prepare_action(
+        kind: str, ctx: Context, request_id: str | None = None, slot_id: str | None = None
+    ) -> dict[str, Any]:
+        """Prepare a consequential action for the user's approval: SUBMIT (book), RESCHEDULE,
+        CANCEL, CONSENT_STORAGE or CONSENT_SHARING. The server speaks the read-back and decides
+        on the user's answer; you never approve or confirm anything yourself."""
+        return await run_tool(
+            runtime, ctx, "prepare_action", approvals.prepare_action, kind, request_id, slot_id
+        )
+
+    @mcp.tool()
+    async def get_service_status(
+        ctx: Context, request_id: str | None = None, issue_id: str | None = None
+    ) -> dict[str, Any]:
+        """The authoritative state of a service request (checks with the service desk first if
+        it is pending): date and time window, and when it was last updated."""
+        return await run_tool(
+            runtime,
+            ctx,
+            "get_service_status",
+            service.get_service_status,
+            request_id=request_id,
+            issue_id=issue_id,
+        )
+
+    @mcp.tool()
+    async def confirm_resolution(
+        ctx: Context, issue_id: str, answer: str, close: bool = False
+    ) -> dict[str, Any]:
+        """Record the customer's own answer after a visit or a check: RESOLVED, PERSISTS or
+        UNSURE. Only this resolves a problem. Set close=true only if they ask to close it."""
+        return await run_tool(
+            runtime,
+            ctx,
+            "confirm_resolution",
+            issues.confirm_resolution,
+            issue_id=issue_id,
+            answer=answer,
+            close=close,
+        )
+
+    @mcp.tool()
+    async def get_history(ctx: Context, appliance_id: str) -> dict[str, Any]:
+        """The appliance's history: reported problems, visits and answers, oldest first, each
+        labelled with who recorded it."""
+        return await run_tool(
+            runtime, ctx, "get_history", history.get_history, appliance_id=appliance_id
         )

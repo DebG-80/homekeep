@@ -12,7 +12,7 @@ import re
 from enum import StrEnum
 from typing import Any
 
-from app.domain import mutations
+from app.domain import mutations, refs
 from app.domain.clock import iso_utc
 from app.domain.context import OperationContext
 from app.domain.errors import ConflictError, DomainError, ErrorCode
@@ -171,6 +171,9 @@ def register_appliance(
             mutations.storage_consent_check(ctx),
             ctx.table.put_new_op(item),
             ctx.table.put_new_op(sentinel),
+            ctx.table.put_new_op(
+                refs.ref_item(appliance_id, ctx.household_id, "APPLIANCE", item["SK"])
+            ),
             ctx.table.put_new_op(
                 event_item(
                     ctx,

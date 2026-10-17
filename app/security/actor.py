@@ -13,6 +13,7 @@ from enum import StrEnum
 class ActorKind(StrEnum):
     HOUSEHOLD = "HOUSEHOLD"
     STAFF = "STAFF"
+    SYSTEM = "SYSTEM"  # the reconciliation sweep (P3-1): may only reconcile
 
 
 class HouseholdRole(StrEnum):
@@ -48,4 +49,6 @@ class Actor:
         """For events and logs: the household role, or the staff groups."""
         if self.kind is ActorKind.HOUSEHOLD and self.role:
             return self.role.value
+        if self.kind is ActorKind.SYSTEM:
+            return "SYSTEM"
         return ",".join(sorted(g.value for g in self.groups)) or "unknown"

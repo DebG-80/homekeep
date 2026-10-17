@@ -20,9 +20,12 @@ import anyio
 
 from app.catalog.hazards import classify
 from app.channel import sessions, templates, usage
+from app.channel.approval_guard import Pending, accept_playback_end, decide
 from app.channel.guards import chunk_speech, command_for, hazard_in, output_guard
 from app.channel.trusted_client import call_trusted
+from app.domain import approvals
 from app.domain.clock import DEFAULT_TIMEZONE
+from app.domain.context import OperationContext
 from app.domain.errors import DomainError, ErrorCode
 from app.logging import log_error, log_event
 from app.orchestrator.agent import TurnOutcome, build_model, run_turn
@@ -41,6 +44,26 @@ _ISSUE_TOOLS = (
     "report_warning_sign",
 )
 _AGENT_SLACK_SECONDS = 1.0
+_NO_PENDING = {
+    "pending_approval_id": None,
+    "approval_expires_at": None,
+    "approval_prepared_at": None,
+    "readback_completed_at": None,
+}
+
+
+@dataclass(frozen=True)
+class VoiceContext:
+    """What the client reports with a turn (TDD §4.3 rules 2 and 3; FR-21)."""
+
+    channel: str = "text"
+    client_state: str | None = None
+    speech_started_at: datetime | None = None
+    playback_ended_at: datetime | None = None
+
+
+def _parse(moment: str | None) -> datetime | None:
+    return datetime.fromisoformat(moment.replace("Z", "+00:00")) if moment else None
 
 
 @dataclass(frozen=True)
@@ -92,13 +115,24 @@ def speak_agent_outcome(outcome: TurnOutcome) -> tuple[str, dict[str, Any] | Non
     """(speech, citation, guarded, handled_by) for a turn the agent handled.
 
     Precedence: a reported warning sign (its approved text, even if the call failed or the turn
-    then hit a cap) → an approved step → a guidance refusal → the cap → the guarded model text.
+    then hit a cap) → a server template for a read-back, status, resolution or history → an
+    approved step → a guidance refusal → the cap → the guarded model text.
     """
     for call in reversed(outcome.tool_calls):
         if call.name == "report_warning_sign":
             data = _ok(call)
             speech = data["speech"] if data else classify(str(call.input.get("sign", ""))).speech
             return speech, None, False, "AGENT"
+    for call in reversed(outcome.tool_calls):
+        data = _ok(call)
+        if call.name == "prepare_action" and data:  # the server's read-back, verbatim (FR-12)
+            return " ".join(templates.render_readback(data["readback"])), None, False, "AGENT"
+        if call.name == "get_service_status" and data:  # the authoritative state (FR-15)
+            return " ".join(templates.render_status(data)), None, False, "AGENT"
+        if call.name == "confirm_resolution" and data:  # the customer's own answer (FR-17)
+            return " ".join(templates.render_resolution(data)), None, False, "AGENT"
+        if call.name == "get_history" and data:  # an attributed timeline (FR-18)
+            return " ".join(templates.render_history(data)), None, False, "AGENT"
     for call in reversed(outcome.tool_calls):
         if call.name != "get_guidance":
             continue
@@ -141,6 +175,13 @@ def _session_updates(outcome: TurnOutcome | None) -> dict[str, Any]:
             updates["active_issue_id"] = call.input["issue_id"]
         if call.name == "get_guidance" and data:
             updates["last_step_id"] = data["step"]["step_id"]
+        if call.name == "prepare_action" and data:  # a new read-back awaits the user's answer
+            updates.update(
+                pending_approval_id=data["pending_ref"],
+                approval_expires_at=data["expires_at"],
+                approval_prepared_at=data["prepared_at"],
+                readback_completed_at=None,
+            )
     return updates
 
 
@@ -154,6 +195,7 @@ def _response(
     speech_rate: str = "normal",
     guarded: bool = False,
     citation: dict[str, Any] | None = None,
+    awaiting_approval: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "session_id": session_id,
@@ -164,17 +206,26 @@ def _response(
         "handled_by": handled_by,
         "guarded": guarded,
         "display": {"citation": citation, "demo_badge": DEMO_BADGE},
+        # Present when this turn spoke a read-back: the client reports when its playback ended.
+        "awaiting_approval": awaiting_approval,
     }
 
 
 async def handle_turn(
-    runtime: Runtime, caller: Caller, session_id: str, turn_id: str, text: str
+    runtime: Runtime,
+    caller: Caller,
+    session_id: str,
+    turn_id: str,
+    text: str,
+    voice: VoiceContext | None = None,
 ) -> dict[str, Any]:
     table, settings = runtime.table, runtime.settings
     household_id = caller.household_id
     started = time.monotonic()
     now = runtime.clock.now()
-    session = await anyio.to_thread.run_sync(sessions.load_session, table, household_id, session_id)
+    session = await anyio.to_thread.run_sync(
+        sessions.load_session, table, household_id, session_id, caller.verified.sub
+    )
 
     # T3: claim the turn first, so a retry never runs it twice (FR-22, invariant 5).
     stale_after = timedelta(seconds=2 * settings.turn_budget_seconds + 10)
@@ -191,7 +242,7 @@ async def handle_turn(
 
     try:
         response, updates = await _run_turn(
-            runtime, caller, session, turn_id, text, correlation_id, now
+            runtime, caller, session, turn_id, text, correlation_id, now, voice or VoiceContext()
         )
     except Exception:
         await anyio.to_thread.run_sync(sessions.release_turn, table, session, turn_id)
@@ -218,6 +269,7 @@ async def _run_turn(
     text: str,
     correlation_id: str,
     now: datetime,
+    voice: VoiceContext,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     table, settings = runtime.table, runtime.settings
     session_id = session["session_id"]
@@ -234,6 +286,18 @@ async def _run_turn(
         )
         updates["pending_hazard"] = None if recorded else pending
 
+    # The client tells us when the read-back finished playing (TDD §4.3 rule 2).
+    pending_ref = session.get("pending_approval_id")
+    readback_at = session.get("readback_completed_at")
+    playback_end = accept_playback_end(  # only a report that can be true (I8)
+        _parse(session.get("approval_prepared_at")) if pending_ref else None,
+        voice.playback_ended_at,
+        voice.client_state,
+        runtime.clock.now(),
+    )
+    if pending_ref and not readback_at and playback_end:
+        readback_at = updates["readback_completed_at"] = playback_end.isoformat()
+
     command = command_for(text)
     hazard = None if command else hazard_in(text)
     if command:  # T4
@@ -248,11 +312,19 @@ async def _run_turn(
             await _trusted(
                 runtime, caller, session_id, turn_id, correlation_id, "cancel_pending_action", {}
             )
+            updates.update(_NO_PENDING)
     elif hazard:  # T5: the approved text is spoken whatever happens to the write
         handled_by, speech = "HAZARD", hazard.speech
         report = {"sign": text, "reason": hazard.reason, "issue_id": session.get("active_issue_id")}
         if not await _record_hazard(runtime, caller, session_id, turn_id, correlation_id, report):
             updates["pending_hazard"] = report  # surfaced in the log and retried next turn
+    elif pending_ref and (
+        approval := await _approval_turn(
+            runtime, caller, session, turn_id, correlation_id, text, voice, readback_at
+        )
+    ):  # T6: only the deterministic guard decides (invariant 2)
+        handled_by, speech = "APPROVAL", approval
+        updates.update(_NO_PENDING)
     elif not await anyio.to_thread.run_sync(
         usage.take_turn, table, caller.household_id, now, settings.daily_turn_cap
     ):
@@ -285,8 +357,131 @@ async def _run_turn(
         speech_rate=speech_rate,
         guarded=guarded,
         citation=citation,
+        awaiting_approval=(
+            {
+                "pending_ref": updates["pending_approval_id"],
+                "expires_at": updates["approval_expires_at"],
+            }
+            if updates.get("pending_approval_id")
+            else None
+        ),
     )
     return response, updates
+
+
+async def _approval_turn(
+    runtime: Runtime,
+    caller: Caller,
+    session: dict[str, Any],
+    turn_id: str,
+    correlation_id: str,
+    text: str,
+    voice: VoiceContext,
+    readback_at: str | None,
+) -> str | None:
+    """T6. The reply to an answer about the pending action, or None when the utterance is not
+    an answer (it then goes to the agent and the action stays pending)."""
+    pending_ref = session["pending_approval_id"]
+    pending = Pending(
+        pending_ref=pending_ref,
+        expires_at=_parse(session.get("approval_expires_at")) or runtime.clock.now(),
+        readback_completed_at=_parse(readback_at),
+    )
+    decision = decide(
+        text,
+        pending=pending,
+        channel=voice.channel,
+        client_state=voice.client_state,
+        speech_started_at=voice.speech_started_at,
+        now=runtime.clock.now(),
+        last_spoken=_last_assistant(session),
+    )
+    session_id = session["session_id"]
+    if decision.kind == "DECLINE":
+        await _trusted(
+            runtime,
+            caller,
+            session_id,
+            turn_id,
+            correlation_id,
+            "cancel_pending_action",
+            {"pending_ref": pending_ref},
+        )
+        return templates.APPROVAL_DECLINED
+    if decision.kind == "NONE":
+        return templates.APPROVAL_EXPIRED if decision.reason == "EXPIRED" else None
+    confirmed = await _trusted(
+        runtime,
+        caller,
+        session_id,
+        turn_id,
+        correlation_id,
+        "confirm_action",
+        {
+            "pending_ref": pending_ref,
+            "readback_completed_at": readback_at,
+            "speech_started_at": voice.speech_started_at.isoformat()
+            if voice.speech_started_at
+            else None,
+            "channel": voice.channel,
+        },
+    )
+    if confirmed.get("status") != "OK":
+        error = confirmed.get("error") or {}
+        if error.get("code") == "APPROVAL_EXPIRED":
+            return templates.APPROVAL_EXPIRED
+        if error.get("reason") == "FEE_CHANGED":
+            fee = (error.get("details") or {}).get("fee_paise")
+            return " ".join(templates.render_outcome({"outcome": "FEE_CHANGED", "fee_paise": fee}))
+        return templates.APPROVAL_REFUSED
+    executed = await _trusted(
+        runtime,
+        caller,
+        session_id,
+        turn_id,
+        correlation_id,
+        "execute_action",
+        {"approval_id": confirmed["data"]["approval_id"]},
+    )
+    if executed.get("status") != "OK":
+        # Never assume: read what was actually recorded (reconciling first). Nothing sent is
+        # said as nothing sent; an unknown provider answer is pending, never "booked" (I2).
+        approval_id = confirmed["data"]["approval_id"]
+        try:
+            result = await anyio.to_thread.run_sync(
+                _outcome_after_failure,
+                runtime,
+                caller,
+                session_id,
+                turn_id,
+                correlation_id,
+                approval_id,
+            )
+        except Exception as exc:
+            log_error("OUTCOME_UNKNOWN", exc, correlation_id=correlation_id)
+            result = {"outcome": "PENDING"}
+        return " ".join(templates.render_outcome(result))
+    return " ".join(templates.render_outcome(executed["data"]))
+
+
+def _outcome_after_failure(
+    runtime: Runtime,
+    caller: Caller,
+    session_id: str,
+    turn_id: str,
+    correlation_id: str,
+    approval_id: str,
+) -> dict[str, Any]:
+    ctx = OperationContext(
+        actor=caller.actor,
+        table=runtime.table,
+        clock=runtime.clock,
+        correlation_id=correlation_id,
+        turn_id=turn_id,
+        session_id=session_id,
+        faults_enabled=runtime.settings.faults_enabled,
+    )
+    return approvals.outcome_after_failure(ctx, approval_id)
 
 
 async def _agent_turn(

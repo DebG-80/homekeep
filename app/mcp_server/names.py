@@ -17,5 +17,12 @@ CUSTOMER_TOOLS: tuple[str, ...] = (
     "report_warning_sign",
     "get_guidance",
     "record_step_result",
+    "draft_service_request",
+    "record_service_details",
+    "list_slots",
+    "prepare_action",
+    "get_service_status",
+    "confirm_resolution",
+    "get_history",
 )
 TRUSTED_TOOLS: tuple[str, ...] = ("confirm_action", "execute_action", "cancel_pending_action")

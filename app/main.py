@@ -1,5 +1,5 @@
-"""FastAPI entry point: liveness, the turn API, the MCP server at /mcp and, in ENV=local, local
-sign-in.
+"""FastAPI entry point: liveness, the turn API, the staff API, the reconciliation sweep, the MCP
+server at /mcp and, in ENV=local, local sign-in.
 
 Run with `uvicorn --factory app.main:create_app`: settings are read when the app is built, so a
 misconfigured environment stops startup (G-3).
@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
+import anyio
 from fastapi import FastAPI
 
 from app import local_auth
@@ -19,10 +20,12 @@ from app.config import ConfigError, Settings
 from app.domain.clock import Clock, clock_from_settings
 from app.logging import configure_logging
 from app.mcp_server.server import build_mcp, build_mcp_app
+from app.provider.sweep import run_sweep
 from app.runtime import Runtime
 from app.security.attestation import Attestor
 from app.security.local_issuer import LocalIssuer
 from app.security.verifier import build_token_verifier
+from app.staff import api as staff_api
 from app.store.table import Table
 
 
@@ -33,6 +36,7 @@ def create_app(
     issuer: LocalIssuer | None = None,
     clock: Clock | None = None,
     model_factory: Callable[[], Any] | None = None,
+    start_sweep: bool = True,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     configure_logging(settings.log_level)
@@ -55,8 +59,11 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.runtime = runtime
-        async with mcp.session_manager.run():
+        async with mcp.session_manager.run(), anyio.create_task_group() as tasks:
+            if start_sweep:  # P3-1; tests call sweep_once directly
+                tasks.start_soon(run_sweep, runtime.table, runtime.clock, settings.faults_enabled)
             yield
+            tasks.cancel_scope.cancel()
 
     app = FastAPI(
         title="HomeKeep", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
@@ -68,6 +75,7 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(channel_api.router())
+    app.include_router(staff_api.router())
     if issuer is not None:
         app.include_router(local_auth.router(issuer))
     app.mount("/", mcp_app)  # last: /mcp and the protected-resource metadata

@@ -33,7 +33,7 @@ async def call_trusted(
         "X-HK-Turn-Id": turn_id,
         "X-HK-Session-Id": session_id,
         "X-Correlation-Id": correlation_id,
-        "X-HK-Attest": attestor.sign(sub, session_id, turn_id),
+        "X-HK-Attest": attestor.sign(sub, session_id, turn_id, tool, arguments),
     }
     async with (
         httpx.AsyncClient(headers=headers, timeout=15) as http,

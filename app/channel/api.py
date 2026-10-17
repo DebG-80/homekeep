@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import re
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 import anyio
 from fastapi import APIRouter, Header, Request
@@ -11,31 +11,23 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from app.channel import pipeline, sessions
-from app.domain.errors import DomainError, ErrorCode
+from app.domain.errors import DomainError
+from app.http_errors import bearer, error_response
 from app.runtime import Runtime
-
-_STATUS = {ErrorCode.AUTH_DENIED: 401, ErrorCode.INVALID_INPUT: 404}
 
 
 class TurnRequest(BaseModel):
     session_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,128}$")
     turn_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,128}$")
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
-    speech_started_at: str | None = None
-    playback_ended_at: str | None = None
-
-
-def _bearer(authorization: str | None) -> str | None:
-    match = re.match(r"^Bearer\s+(\S+)$", authorization or "")
-    return match.group(1) if match else None
+    channel: Literal["voice", "text"] = "text"
+    client_state: Literal["LISTENING", "SPEAKING", "PROCESSING", "PAUSED", "IDLE"] | None = None
+    speech_started_at: datetime | None = None
+    playback_ended_at: datetime | None = None
 
 
 def _error(error: DomainError) -> JSONResponse:
-    status = _STATUS.get(error.code, 400)
-    if error.code is ErrorCode.INVALID_INPUT and error.reason != "NOT_FOUND":
-        status = 400
-    body = {"error": {"code": error.code.value, "reason": error.reason, "message": error.message}}
-    return JSONResponse(body, status_code=status)
+    return error_response(error)
 
 
 def router() -> APIRouter:
@@ -46,9 +38,7 @@ def router() -> APIRouter:
 
     async def caller_of(request: Request, authorization: str | None) -> pipeline.Caller:
         runtime = runtime_of(request)
-        return await anyio.to_thread.run_sync(
-            pipeline.authenticate, runtime, _bearer(authorization)
-        )
+        return await anyio.to_thread.run_sync(pipeline.authenticate, runtime, bearer(authorization))
 
     @routes.post("/sessions")
     async def start_session(
@@ -75,7 +65,17 @@ def router() -> APIRouter:
         try:
             caller = await caller_of(request, authorization)
             return await pipeline.handle_turn(
-                runtime_of(request), caller, body.session_id, body.turn_id, body.text
+                runtime_of(request),
+                caller,
+                body.session_id,
+                body.turn_id,
+                body.text,
+                voice=pipeline.VoiceContext(
+                    channel=body.channel,
+                    client_state=body.client_state,
+                    speech_started_at=body.speech_started_at,
+                    playback_ended_at=body.playback_ended_at,
+                ),
             )
         except DomainError as error:
             return _error(error)
@@ -87,7 +87,11 @@ def router() -> APIRouter:
         try:
             caller = await caller_of(request, authorization)
             session = await anyio.to_thread.run_sync(
-                sessions.load_session, runtime_of(request).table, caller.household_id, session_id
+                sessions.load_session,
+                runtime_of(request).table,
+                caller.household_id,
+                session_id,
+                caller.verified.sub,
             )
         except DomainError as error:
             return _error(error)

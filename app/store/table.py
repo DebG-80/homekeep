@@ -189,6 +189,48 @@ class Table:
             put["ExpressionAttributeNames"] = dict(names)
         return {"Put": put}
 
+    def update_op(
+        self,
+        pk: str,
+        sk: str,
+        expression: str,
+        values: Mapping[str, Any],
+        names: Mapping[str, str] | None = None,
+        condition: str | None = None,
+    ) -> dict[str, Any]:
+        """An update inside a transaction (for example, a counter that must stay below a limit)."""
+        update: dict[str, Any] = {
+            "TableName": self.name,
+            "Key": to_dynamo({"PK": pk, "SK": sk}),
+            "UpdateExpression": expression,
+            "ExpressionAttributeValues": to_dynamo(values),
+        }
+        if names:
+            update["ExpressionAttributeNames"] = dict(names)
+        if condition:
+            update["ConditionExpression"] = condition
+        return {"Update": update}
+
+    def delete_op(self, pk: str, sk: str) -> dict[str, Any]:
+        return {"Delete": {"TableName": self.name, "Key": to_dynamo({"PK": pk, "SK": sk})}}
+
+    def query_index(self, index: str, pk: str, *, forward: bool = False) -> list[dict[str, Any]]:
+        """All items under one GSI partition, newest first by default (queues, sweep)."""
+        kwargs: dict[str, Any] = {
+            "TableName": self.name,
+            "IndexName": index,
+            "KeyConditionExpression": "GSI1PK = :pk",
+            "ExpressionAttributeValues": to_dynamo({":pk": pk}),
+            "ScanIndexForward": forward,
+        }
+        items: list[dict[str, Any]] = []
+        while True:
+            response = self.client.query(**kwargs)
+            items.extend(from_dynamo(item) for item in response.get("Items", []))
+            if "LastEvaluatedKey" not in response:
+                return items
+            kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
     def delete(self, pk: str, sk: str) -> None:
         self.client.delete_item(TableName=self.name, Key=to_dynamo({"PK": pk, "SK": sk}))
 

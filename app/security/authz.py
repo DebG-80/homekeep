@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 from app.domain.errors import DomainError, ErrorCode
-from app.security.actor import Actor, ActorKind, Grant, HouseholdRole
+from app.security.actor import Actor, ActorKind, Grant, HouseholdRole, StaffGroup
 
 
 class Action(StrEnum):
@@ -52,3 +52,40 @@ def authorize(actor: Actor, action: Action, household_id: str) -> None:
     needed = _HELPER_GRANT[action]
     if needed is None or needed not in actor.grants:
         raise DomainError(ErrorCode.AUTH_DENIED, "GRANT_MISSING")
+
+
+class StaffAction(StrEnum):
+    QUEUE_VIEW = "staff.queue"
+    CASE_VIEW = "staff.case.view"
+    VISIT_EVENT = "staff.case.visit_event"  # VISIT_STARTED, WORK_NOTE, VISIT_COMPLETED
+    COORDINATION_EVENT = "staff.case.coordination_event"  # NO_SHOW, provider confirm/reject
+    CASE_ASSIGN = "staff.case.assign"
+    MANUAL_REVIEW = "staff.manual"
+    SAFETY_CLEAR = "staff.safety.clear"
+    MODEL_VERIFY = "staff.model.verify"
+
+
+_COORDINATOR_ACTIONS = frozenset(StaffAction) - {StaffAction.MODEL_VERIFY}
+
+
+def authorize_staff(actor: Actor, action: StaffAction, assignee_sub: str | None = None) -> None:
+    """BRD §4 for staff: a technician sees and updates only their own assigned job, a coordinator
+    manages cases, a catalog reviewer verifies models, and an admin has no automatic authority."""
+    if actor.kind is not ActorKind.STAFF:
+        raise DomainError(ErrorCode.AUTH_DENIED, "NOT_STAFF")
+    if StaffGroup.COORDINATOR in actor.groups and action in _COORDINATOR_ACTIONS:
+        return
+    if StaffGroup.TECHNICIAN in actor.groups:
+        if action is StaffAction.QUEUE_VIEW:
+            return
+        if action in (StaffAction.CASE_VIEW, StaffAction.VISIT_EVENT) and assignee_sub == actor.sub:
+            return
+    if StaffGroup.CATALOG_REVIEWER in actor.groups and action is StaffAction.MODEL_VERIFY:
+        return
+    raise DomainError(ErrorCode.AUTH_DENIED, "STAFF_ROLE_NOT_PERMITTED")
+
+
+def authorize_system(actor: Actor, household_id: str) -> None:
+    """The sweep's per-household identity may only reconcile that household's requests."""
+    if actor.kind is not ActorKind.SYSTEM or actor.household_id != household_id:
+        raise DomainError(ErrorCode.AUTH_DENIED, "NOT_SYSTEM")

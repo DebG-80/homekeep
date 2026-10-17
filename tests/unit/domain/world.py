@@ -65,6 +65,7 @@ class World:
             correlation_id=correlation_id or f"corr-{uuid.uuid4().hex[:8]}",
             turn_id=turn_id or f"turn-{uuid.uuid4().hex[:8]}",
             session_id="session-1",
+            faults_enabled=True,  # domain tests drive the simulator's fault matrix
         )
 
     def items(self, household_id: str, prefix: str = "") -> list[dict[str, Any]]:

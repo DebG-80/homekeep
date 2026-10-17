@@ -219,3 +219,64 @@ Key tests (HANDOFF §6): AT-12 to AT-19, AT-34, AT-35.
 - The Ops page and token-usage records (deferred by P1-1).
 - A real provider adapter (invariant 3); payments.
 - AWS resources, real Bedrock calls, `make eval`; commits and pushes.
+
+## Implementation deviations and notes (recorded during implementation, 16 Oct 2026)
+
+Built in one pass per P3-4: 3a, then the checkpoint (`make lint` clean, 295 passed), then 3b. The Proof tests were written before the code for each half.
+
+| # | Plan said | Implemented | Why |
+| --- | --- | --- | --- |
+| D3-1 | `execute_action` operation key `sha256(approval_id\|"execute")`, recorded as an `OP#` item | Idempotency comes from the approval item itself (state `EXECUTED` plus the stored result), together with the provider's de-duplication by operation key (`{approval_id}:submit`, `:replace`, `:cancel`) | An `OP#` record would freeze an unknown outcome. A `PENDING` or `CANCEL_PENDING` result is not stored, so a retry re-asks the provider, which returns the same record (AT-14). |
+| D3-2 | — | `SLOT_UNAVAILABLE` is decided by an availability check *before* anything is persisted; the request stays `DRAFT` and alternatives can be offered | BRD §7.2 has no `DRAFT → FAILED` for a lost slot; AT-15's losers must be able to choose another time on the same request. The provider's conditional counter still decides the real race. |
+| D3-3 | `FEE_CHANGE` fault | Consumed by the re-quote in `confirm_action`, which refuses with `RECORD_CONFLICT` (`FEE_CHANGED`, `details.fee_paise`) so a new read-back is needed | AT-15: a changed fee needs a new approval, before anything is sent. |
+| D3-4 | — | When the approval guard decides `EXPIRED`, the pipeline speaks `APPROVAL_EXPIRED` instead of passing the turn to the agent | The elder must hear why "yes" did nothing (FR-12). |
+| D3-5 | Cancellation wording | Customer templates say the visit was "called off" | Plain words, and "cancel" is one of the STOP command words (`guards.py`), so the elder repeating the outcome back is not mistaken for a new request. Templates are server text; the output guard on model text is unchanged. |
+| D3-6 | P3-3: values stored on the household and copied into the snapshot | `record_service_details` writes the request and `META` in one transaction, with one conditional write on `META` (version **and** storage consent) | A DynamoDB transaction may touch an item only once, so the consent check is folded into the `META` condition. |
+| D3-7 | Local check: the fake model in `make run` | The journey ran with the real app in-process (uvicorn, MCP, Strands loop) and a scripted model, against the **DynamoDB Local container** from `make run`. The container itself was checked for `/healthz`, the staff queue, 401 without a token and 403 for a household token, and no sweep errors | The container's default fake model only calls `get_context`, so it cannot drive a booking; a scripted model can. |
+| D3-8 | 401 vs 403 split for staff routes | A shared `app/http_errors.py` (`status_for`, `bearer`) maps token failures to 401 and every other `AUTH_DENIED` to 403, `RECORD_CONFLICT` to 409; the turn API uses it too | Slice 2 nit N1, applied to `/api/*` as the plan says. A household member without an active membership now gets 403 (was 401). |
+| D3-9 | — | `get_context` returns `service_requests` (open ones, pending ones reconciled first) and `pending_approval` for this session | The plan names reconcile-on-read for `get_context`; Slice 2 left `pending_approval` as `None`. |
+| D3-10 | — | The agent prompt lists the booking, consent, status, resolution and history steps | The model must know when to call the new tools; it still never approves anything. |
+| D3-11 | — | History speech names the household, not "you", for customer answers ("the household said it was fixed") and speaks the latest three entries | Another member may have answered; the full timeline stays in the record (FR-18). |
+| D3-12 | Cancelling or changing while the request is pending queues a MANUAL item | `prepare_action` refuses a cancel or change on a `*_PENDING` request (`NOT_CANCELLABLE` or `NOT_RESCHEDULABLE`); no manual-review item is raised | Review finding I6, decided by Deb (16 Oct): honest and on the plan's cut list. The elder asks again once the pending answer is known; a stuck request raises its own manual item (I5). |
+
+Notes:
+- `record_service_details` and `confirm_resolution`/`get_history` follow the `mcp-tool-contract` skill; `docs/architecture/interactions.md` needs no change (no arrow's meaning changed).
+- Sharing consent is not required to submit a demo booking; the read-back states what is shared. If Deb reads FR-01 as requiring `sharing_consent = GRANTED` before submission, that is a one-line check in `prepare_action(SUBMIT)`.
+- Extra tests beyond Proof: `tests/unit/domain/test_staff_events.py` (ACK_ONLY confirmed or rejected by a coordinator provider event; technicians refused; duplicate event).
+
+## Review fixes (16 Oct 2026)
+
+The `reviewer` subagent found 1 Critical and 15 Important issues, plus nits. Deb chose to fix all of them except I6, which is recorded as D3-12. Each fix started with a test that was confirmed to fail for the reported reason (two guard tests, `test_i1_cancel_retried_…` and `test_i5_fresh_…`, passed already; they are kept as regression guards).
+
+| # | Finding | Fix | Test |
+| --- | --- | --- | --- |
+| C1 (Critical) | Staff event de-dup returned a stored result whatever the case or payload; provider-event de-dup was written outside the outcome | The key is `SREVT#{case}#{event}` and stores a fingerprint of (type, expected version, summary): the same event again gets the original result, a different one under a used ID is `RECORD_CONFLICT EVENT_ID_REUSED`. Provider events write the de-dup item inside the outcome transaction | `test_staff_events.py::test_c1_reused_event_id_…`, `::test_c1_event_ids_are_scoped_to_their_case` |
+| I1 | A reschedule retried after success superseded again | Before a new dispatch, `reschedule` and `cancel` check the provider's record for the operation key; if it ran, the recorded outcome is returned | `test_booking_integrity.py::test_i1_reschedule_retried_…`, `::test_i1_cancel_retried_…` |
+| I2 | Every failed `execute_action` was spoken as "sent, pending" | The pipeline asks `approvals.outcome_after_failure`, which reads the records (reconciling first): `NOT_SENT` ("nothing was sent") when nothing was dispatched for this approval, otherwise the recorded outcome | `::test_i2_outcome_after_a_failed_execute_…`, `::test_i2_consent_outcome_…`, `test_templates.py::test_review_outcome_wording` |
+| I3 | A reconcile that lost a race raised `RECORD_CONFLICT` | `booking._settle`: on a lost conditional write, re-read the request and report what is recorded | `::test_i3_reconcile_that_loses_a_race_…` |
+| I4 | Coordinator rejection kept the place; could reject a timed-out request; place and record not atomic | `PROVIDER_CONFIRMED`/`PROVIDER_REJECTED` need `REQUESTED` and settle the provider's own record (`DemoProvider.settle`; a rejection releases the place in the same write). Taking or releasing a place and writing the provider record are one transaction (`Table.update_op`) | `test_staff_events.py::test_i4_…`, `test_booking_integrity.py::test_i4c_…` |
+| I5 | A dispatch lost before reaching the provider stayed pending forever | `reconcile` repeats the call under the same operation key after 60 s (the provider de-duplicates), and after 15 minutes raises one `DISPATCH_UNKNOWN` manual item. The sweep now logs and skips a failing request instead of ending the round | `::test_i5_lost_dispatch_…`, `::test_i5_fresh_pending_request_…` |
+| I7 | Approval expiry was a flat 5 minutes; any slot could be prepared | `list_slots` records each offered slot (`SR#{id}#OFFER#{slot}`, 10 minutes). `prepare_action` needs an unexpired offer (`SLOT_NOT_OFFERED`) and expires at the earliest of 5 minutes, the offer and the session's end | `::test_i7_approval_needs_a_listed_slot_…` |
+| I8 | Client playback and speech times were trusted unbounded | The pipeline accepts a playback end only after the read-back was prepared, not in the future and not while the client reports SPEAKING (`approval_guard.accept_playback_end`). The guard and `confirm_action` refuse future speech times (`SPEECH_TIME_INVALID`) and read-back times before the approval was prepared | `test_approval_guard.py::test_i8_…` (2), `test_booking_integrity.py::test_i8_…` |
+| I9 | Sharing consent was answered with the storage sentence | `CONSENT_SHARING_RECORDED` template | `test_templates.py::test_review_outcome_wording` |
+| I10 | Status replies had no "last updated" | Pending and requested replies add "It was last updated on Friday, 16 October at 3:05 pm" (Asia/Kolkata) | `::test_fr15_status_says_when_…` |
+| I11 | Reopening recorded no reason | `reopen_reason` (the customer's new wording) on the issue and in its view | `test_staff.py::test_at19_…` (strengthened) |
+| I12 | The agent received the full address and contact on every turn | Request views carry `address_on_file`/`contact_on_file` only; full values appear only in the booking read-back | `test_service.py::test_p3_3_…` (moved to the stored record, plus non-exposure checks, including `get_context`) |
+| I13 | The correlation trail did not join | Every request event carries `approval_id` and `dispatch_correlation_id`; `APPROVAL_PREPARED`/`APPROVAL_CONFIRMED` carry `approval_id`, and the latter is on the appliance's timeline | `test_booking.py::test_at14_…` (strengthened) |
+| I14 | The QA contact used Pune's real STD code | `Landline 000 0000 0000`, a non-dialable placeholder; fixture notes corrected | — |
+| I15 | Two concurrent drafts could create two requests for one issue | Per-issue sentinel `OPENSR#{issue}` written with the draft (new, or conditionally taken over from an ended request); a losing draft returns the winner | `::test_i15_one_open_request_…` |
+| N1 | Cancel read-back said "cancel" (a STOP word); questions not last | All read-backs end with their one question; cancel says "call off"; the guard accepts "yes call it off", "yes change it", "yes move it" (and without "yes") | `test_templates.py::test_review_readbacks_…`, `test_approval_guard.py::test_n1_…` |
+| N2 | Reschedule and cancel read-backs omitted the provider (reschedule also the address and data shared) | Added | `test_templates.py::test_review_readbacks_…` |
+| N3 | `NO_SHOW` had no state check | Needs `CONFIRMED` | `test_staff_events.py::test_n3_…` |
+| N4 | Disclosure wording differed from TDD §4.6 | Templates use `DEMO_DISCLOSURE`: "This is a demonstration. No real technician will visit." | `test_templates.py::test_review_outcome_wording` |
+
+Test-setup corrections (no assertion weakened):
+- `test_at13_fresh_explicit_yes_books_once` had the read-back finishing 2 s *before* it was prepared; the clock now advances 20 s first. The new I8 rule rightly refused the impossible timeline.
+- `test_at15_last_slot_…`: Household B now lists slots before approving, because I7 requires an offered slot.
+- `test_ack_only_request_is_confirmed_…` re-sent a duplicate with a different `expected_version` and expected the original result; under invariant 5 that is a conflict, so the duplicate now repeats the identical body.
+
+Added after the re-verification (verifier suggestion): `tests/contract/test_mcp_trusted.py::test_inv2_confirm_and_execute_refuse_without_attestation_for_that_call`. Over MCP, `confirm_action` and `execute_action` refuse a missing or garbage attestation, and one made for another tool or other arguments, and the pending approval does not move. The same call with the channel's attestation is accepted. With attestation checking disabled in a scratch probe, the test fails as it should.
+
+Not changed: N5's tautological `authorize_system` (the settled count is no longer logged in `action`), and the four unlisted nits. The cancel transaction still scans for other confirmed requests instead of conditioning on the I15 sentinel; with one open request per issue the scan is exact.
+
+Local check re-run on DynamoDB Local after the fixes: the full journey passes; one slot place taken, one provider record, one open-request sentinel.

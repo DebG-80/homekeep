@@ -21,7 +21,7 @@ MAX_MESSAGES = 12
 
 
 def _session_sk(session_id: str) -> str:
-    return f"SESSION#{session_id}"
+    return keys.session_sk(session_id)
 
 
 def _turn_sk(session_id: str, turn_id: str) -> str:
@@ -48,9 +48,11 @@ def create_session(table: Table, household_id: str, sub: str, now: datetime) -> 
     return session
 
 
-def load_session(table: Table, household_id: str, session_id: str) -> dict[str, Any]:
+def load_session(table: Table, household_id: str, session_id: str, sub: str) -> dict[str, Any]:
     session = table.get(keys.household_pk(household_id), _session_sk(session_id))
-    if session is None:  # another household's session is simply not found
+    # Another household's session, or another member's in the same household, is not found
+    # (G3-9): a pending approval belongs to the person who heard the read-back.
+    if session is None or session.get("actor_sub") != sub:
         raise DomainError(ErrorCode.INVALID_INPUT, "NOT_FOUND")
     return session
 

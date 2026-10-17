@@ -57,7 +57,7 @@ def _free_port() -> int:
 
 @contextmanager
 def serve(
-    table: Table, issuer: LocalIssuer, model_factory: Any = None, **env: str
+    table: Table, issuer: LocalIssuer, model_factory: Any = None, clock: Any = None, **env: str
 ) -> Iterator[LiveServer]:
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"
@@ -72,7 +72,14 @@ def serve(
             **env,
         }
     )
-    app = create_app(settings, table=table, issuer=issuer, model_factory=model_factory)
+    app = create_app(
+        settings,
+        table=table,
+        issuer=issuer,
+        model_factory=model_factory,
+        clock=clock,
+        start_sweep=False,
+    )
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -146,6 +153,7 @@ def turn(
     text: str,
     turn_id: str | None = None,
     identity: str = "a_owner",
+    **fields: Any,
 ) -> dict[str, Any]:
     import uuid
 
@@ -153,6 +161,7 @@ def turn(
         "session_id": session_id,
         "turn_id": turn_id or f"turn-{uuid.uuid4().hex[:12]}",
         "text": text,
+        **fields,
     }
     response = api(server, "POST", "/api/turns", identity, json=body)
     assert response.status_code == 200, response.text

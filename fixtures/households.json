@@ -1,5 +1,5 @@
 {
-  "notes": "Synthetic households (BRD §12.1, TDD §9.2). Judge households J1-J3 start with no consent and no appliances so a judge walks the whole journey (G1-2). All names are fictional; no addresses or contact details are seeded. Household A's Bedroom AC is seeded VERIFIED as FL-18i (Slice 2, G2-1) for the verified-model guidance path; the Hall AC keeps an unknown model.",
+  "notes": "Synthetic households (BRD §12.1, TDD §9.2). Judge households J1-J3 start with no consent and no appliances so a judge walks the whole journey (G1-2). All names are fictional. The only seeded address and contact route are Household A's, and both are synthetic (the contact is a non-dialable placeholder, 000 0000 0000). Household A's Bedroom AC is seeded VERIFIED as FL-18i (Slice 2, G2-1) for the verified-model guidance path; the Hall AC keeps an unknown model. Household A carries a synthetic service address and contact route so QA can book without dictating one; judge households dictate theirs (Slice 3, P3-3).",
   "seeded_at": "2026-10-01T00:00:00.000000Z",
   "consent_version": "consent-v1",
   "households": [
@@ -47,7 +47,9 @@
           "nickname": "Living room TV",
           "room": "living room"
         }
-      ]
+      ],
+      "service_address": "Flat 4, Example Residency, Pune",
+      "contact_route": "Landline 000 0000 0000"
     },
     {
       "household_id": "qa-b",

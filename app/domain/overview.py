@@ -6,12 +6,24 @@ from __future__ import annotations
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from app.domain import appliances, guidance, issues, observations
+from app.domain import appliances, approvals, booking, guidance, issues, observations, requests
 from app.domain.clock import DEFAULT_TIMEZONE
 from app.domain.context import OperationContext
 from app.domain.household import get_household
+from app.domain.state import TERMINAL_REQUEST_STATUSES
 from app.security.authz import Action, authorize
 from app.store import keys
+
+
+def _open_requests(ctx: OperationContext) -> list[dict[str, Any]]:
+    """Open service requests, each pending one reconciled first (TDD §4.6 reconcile-on-read)."""
+    found = []
+    for item in requests.all_requests(ctx):
+        if item["state"] in requests.PENDING_STATES and booking.reconcile(ctx, item) is not None:
+            item = requests.load(ctx, item["request_id"])
+        if item["state"] not in TERMINAL_REQUEST_STATUSES:
+            found.append(requests.view(item))
+    return found
 
 
 def get_context(ctx: OperationContext) -> dict[str, Any]:
@@ -30,7 +42,8 @@ def get_context(ctx: OperationContext) -> dict[str, Any]:
         "sharing_consent": household["sharing_consent"],
         "appliances": [appliances.view(a) for a in ctx.table.query(pk, keys.APPLIANCE_PREFIX)],
         "open_issues": open_issues,
-        "pending_approval": None,  # approvals arrive in Slice 3
+        "service_requests": _open_requests(ctx),
+        "pending_approval": approvals.pending_for_session(ctx),
         "timezone": zone,
         "local_date": local_now.date().isoformat(),
         "local_time": local_now.strftime("%H:%M"),

@@ -74,7 +74,7 @@ def test_inv1_tool_schemas_have_no_household_argument(live: LiveServer) -> None:
             return {t.name: t.inputSchema for t in (await session.list_tools()).tools}
 
     schemas = anyio.run(run)
-    assert set(schemas) == set(CUSTOMER_TOOLS) | {"cancel_pending_action"}
+    assert set(schemas) == set(CUSTOMER_TOOLS) | set(TRUSTED_TOOLS)  # all listed; trusted gated
     assert set(TRUSTED_TOOLS) >= {"cancel_pending_action", "confirm_action", "execute_action"}
     for name, schema in schemas.items():
         properties = {p.casefold() for p in schema.get("properties", {})}

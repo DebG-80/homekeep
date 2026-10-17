@@ -80,6 +80,11 @@ def household_items(
             "resettable": household["resettable"],
             "storage_consent": household["storage_consent"],
             "sharing_consent": household["sharing_consent"],
+            **{
+                attribute: {"value": household[attribute], "status": "USER_REPORTED"}
+                for attribute in ("service_address", "contact_route")
+                if household.get(attribute)
+            },
             "created_at": seeded_at,
             "updated_at": seeded_at,
             "version": 1,
@@ -127,6 +132,17 @@ def household_items(
         )
         items.append(
             {
+                "PK": keys.ref_pk(appliance["appliance_id"]),
+                "SK": keys.META,
+                "kind": "REF",
+                "ref_id": appliance["appliance_id"],
+                "ref_kind": "APPLIANCE",
+                "household_id": household_id,
+                "record_sk": keys.appliance_sk(appliance["appliance_id"]),
+            }
+        )
+        items.append(
+            {
                 "PK": pk,
                 "SK": keys.nickname_sk(nickname_key),
                 "kind": "NICKNAME",
@@ -169,10 +185,42 @@ def write_items(table: Table, items: Iterable[dict[str, Any]], report: SeedRepor
             report.existing += 1
 
 
+def staff_items(
+    identities: Iterable[dict[str, Any]], subjects: dict[str, str]
+) -> list[dict[str, Any]]:
+    """The staff directory (for assignment) and the demo provider's default technician (G3-3)."""
+    items: list[dict[str, Any]] = []
+    for identity in identities:
+        if identity.get("groups") and identity["key"] in subjects:
+            items.append(
+                {
+                    "PK": keys.staff_pk(subjects[identity["key"]]),
+                    "SK": keys.META,
+                    "kind": "STAFF",
+                    "sub": subjects[identity["key"]],
+                    "username": identity["username"],
+                    "groups": identity["groups"],
+                    "GSI1PK": "STAFF",  # the coordinator's technician list
+                    "GSI1SK": identity["username"],
+                }
+            )
+    if "tech_assigned" in subjects:
+        items.append(
+            {
+                "PK": keys.PROVIDER_PK,
+                "SK": "CONFIG",
+                "kind": "PROVIDER_CONFIG",
+                "default_technician_sub": subjects["tech_assigned"],
+            }
+        )
+    return items
+
+
 def seed_dynamo(
     table: Table, env: str | None, subjects: dict[str, str], report: SeedReport
 ) -> None:
     households, identities = load_fixtures()
+    write_items(table, staff_items([i for i in identities if _in_env(i, env)], subjects), report)
     for household in households["households"]:
         if not _in_env(household, env):
             continue

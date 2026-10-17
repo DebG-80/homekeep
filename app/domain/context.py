@@ -19,13 +19,18 @@ class OperationContext:
     correlation_id: str
     turn_id: str | None = None
     session_id: str | None = None
+    faults_enabled: bool = False
+    # Staff and the reconciliation sweep act on a household resolved from an opaque record
+    # reference (G3-1), never from their own input; household members always use their own.
+    scope_household_id: str | None = None
 
     @property
     def household_id(self) -> str:
-        """The actor's household, from the membership lookup. Staff have none here."""
-        if not self.actor.household_id:
+        """The household this call acts on: the member's own, or the resolved staff scope."""
+        household = self.actor.household_id or self.scope_household_id
+        if not household:
             raise DomainError(ErrorCode.AUTH_DENIED, "NO_HOUSEHOLD_SCOPE")
-        return self.actor.household_id
+        return household
 
     def require_turn_id(self) -> str:
         if not self.turn_id:
