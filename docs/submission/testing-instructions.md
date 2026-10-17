@@ -44,7 +44,7 @@ TODO(slice-4): the same journey using the text box, for judges without a microph
 2. Connect with transport **Streamable HTTP** to `<APP_URL>/mcp`.
 3. Inspector discovers the authorisation server from the Protected Resource Metadata at `<APP_URL>/.well-known/oauth-protected-resource`.
 4. Use the pre-registered public client: Client ID `<MCP_INSPECTOR_CLIENT_ID>`, no secret, PKCE; the redirect URL is Inspector's default local callback. Sign in with your household login.
-5. Expected: the handshake reports protocol version `2025-11-25`, and the tool list shows the customer tools.
+5. Expected: the handshake reports protocol version `2025-11-25`. The tool list shows the customer tools and also the three trusted tools (`confirm_action`, `execute_action`, `cancel_pending_action`), which refuse any call without HomeKeep's channel attestation (step 6).
    Known limit: Inspector does not send HomeKeep's `X-HK-Turn-Id` header, so the server gives each of its calls a fresh turn ID. Tools work, but a retried call from Inspector is not de-duplicated the way HomeKeep's own voice channel is.
 6. Expected refusal: calling a trusted tool such as `confirm_action` from Inspector is refused with `AUTH_DENIED`. Only HomeKeep's own channel, after a spoken "yes", can approve a booking.
 

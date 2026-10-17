@@ -115,6 +115,10 @@ def open_request_sk(issue_id: str) -> str:
     return f"OPENSR#{issue_id}"
 
 
+def hold_sk(hold_id: str) -> str:
+    return f"HOLD#{hold_id}"
+
+
 def session_sk(session_id: str) -> str:
     return f"SESSION#{session_id}"
 

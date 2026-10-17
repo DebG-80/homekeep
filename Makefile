@@ -50,8 +50,13 @@ audit: $(WEB_DEPS) ## Known-vulnerability scan: pip-audit on the lock, npm audit
 	$(UV_RUN) pip-audit --strict --disable-pip --requirement "$$tmp"
 	cd web && npm audit --audit-level=high
 
-e2e: ## Playwright text-path tests (arrives in Slice 4)
-	@echo "make e2e arrives in Slice 4 (Playwright text-path tests)." >&2; exit 2
+e2e: $(WEB_DEPS) ## Playwright text-path tests against `make run` (resets local data first)
+	docker compose restart dynamodb-local
+	@$(MAKE) --no-print-directory seed
+	cd web && npx playwright install chromium
+	cd web && npx playwright test
 
-eval: ## Real-Bedrock evaluation set, Deb only (arrives in Slice 4)
-	@echo "make eval arrives in Slice 4 (real-Bedrock evaluation set; Deb only)." >&2; exit 2
+eval: ## Real-Bedrock evaluation set, Deb only: needs `make run` and AWS credentials for Bedrock
+	@curl -s -o /dev/null http://localhost:8001 || { echo "make eval needs DynamoDB Local: run 'make run' first." >&2; exit 2; }
+	set -a; if [ -f .env.eval ]; then . ./.env.eval; fi; set +a; \
+	$(UV_RUN) python -m scripts.eval --repeats 3

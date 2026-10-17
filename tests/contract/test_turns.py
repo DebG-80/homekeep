@@ -14,7 +14,7 @@ from app.security.local_issuer import LocalIssuer
 from app.store import keys
 from app.store.table import Table
 from scripts import seed
-from tests.contract.live import LiveServer, new_session, serve, spoken, turn
+from tests.contract.live import LiveServer, api, new_session, serve, spoken, turn
 
 BEDROOM_AC = "qa-a-ac-bedroom"
 
@@ -349,3 +349,24 @@ def test_nfr01_turn_budget_is_a_wall_clock(server: Server) -> None:
     assert response["handled_by"] == "CAP"
     assert spoken(response) == templates.CYCLE_CAP
     assert elapsed < 4  # answered near the budget, not after the slow model finished
+
+
+def test_stop_endpoint_cancels_pending_and_keeps_committed_state(server: Server) -> None:
+    with server() as (live, scripts):
+        session_id = new_session(live)
+        scripts.queue([call("prepare_action", kind="CONSENT_SHARING"), say("")])
+        readback = turn(live, session_id, "Please share updates with my family")
+        assert readback["awaiting_approval"]
+        pending = readback["awaiting_approval"]["pending_ref"]
+
+        body = {"turn_id": "turn-stop-1"}
+        first = api(live, "POST", f"/api/sessions/{session_id}/stop", json=body)
+        again = api(live, "POST", f"/api/sessions/{session_id}/stop", json=body)
+        assert first.status_code == again.status_code == 200, first.text
+        assert first.json() == again.json()  # the same turn_id: one stop
+        assert spoken(first.json()) == templates.COMMANDS["STOP"]
+        approval = live.table.get(keys.household_pk("qa-a"), keys.approval_sk(pending))
+        assert approval["state"] == "CANCELLED"
+        state = api(live, "GET", f"/api/sessions/{session_id}/state").json()
+        assert state["pending_approval_id"] is None
+        assert len(state["messages"]) >= 2  # what was said before is kept

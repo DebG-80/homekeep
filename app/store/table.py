@@ -211,8 +211,13 @@ class Table:
             update["ConditionExpression"] = condition
         return {"Update": update}
 
-    def delete_op(self, pk: str, sk: str) -> dict[str, Any]:
-        return {"Delete": {"TableName": self.name, "Key": to_dynamo({"PK": pk, "SK": sk})}}
+    def delete_op(self, pk: str, sk: str, expected_version: int | None = None) -> dict[str, Any]:
+        delete: dict[str, Any] = {"TableName": self.name, "Key": to_dynamo({"PK": pk, "SK": sk})}
+        if expected_version is not None:  # only if nobody changed (or deleted) it meanwhile
+            delete["ConditionExpression"] = "#version = :expected"
+            delete["ExpressionAttributeNames"] = {"#version": "version"}
+            delete["ExpressionAttributeValues"] = to_dynamo({":expected": expected_version})
+        return {"Delete": delete}
 
     def query_index(self, index: str, pk: str, *, forward: bool = False) -> list[dict[str, Any]]:
         """All items under one GSI partition, newest first by default (queues, sweep)."""

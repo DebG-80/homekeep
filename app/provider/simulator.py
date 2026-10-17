@@ -131,7 +131,8 @@ class DemoProvider:
             condition="attribute_not_exists(#count) OR #count < :limit",
         )
 
-    def _release_op(self, slot_id: str) -> dict[str, Any]:
+    def release_op(self, slot_id: str) -> dict[str, Any]:
+        """Give one place back, unless none is taken (for a transaction)."""
         return self.table.update_op(
             keys.PROVIDER_PK,
             keys.slot_sk(slot_id),
@@ -140,6 +141,15 @@ class DemoProvider:
             {"#count": "taken"},
             condition="#count > :zero",
         )
+
+    def release_place(self, slot_id: str) -> bool:
+        """Give one place back (a reset or purge of a household that held it). False if the
+        slot had no place taken."""
+        try:
+            self.table.transact([self.release_op(slot_id)])
+        except ConflictError:
+            return False
+        return True
 
     # --- requests ---------------------------------------------------------------------------
 
@@ -218,7 +228,7 @@ class DemoProvider:
         if record["status"] == status:
             return record  # already settled this way
         settled = {**record, "status": status, "settled_at": iso_utc(self.clock.now())}
-        places = (self._release_op(record["slot_id"]),) if status == "REJECTED" else ()
+        places = (self.release_op(record["slot_id"]),) if status == "REJECTED" else ()
         self.table.transact(
             [
                 *places,
@@ -244,7 +254,7 @@ class DemoProvider:
             record = self._record(
                 operation_key,
                 "REPLACE",
-                (self._take_op(new_slot), self._release_op(old_slot)),
+                (self._take_op(new_slot), self.release_op(old_slot)),
                 status="REPLACED",
                 slot_id=new_slot,
             )
@@ -259,7 +269,7 @@ class DemoProvider:
         fault = take_fault(self.table, household_id, CANCEL_FAULTS, self.faults_enabled)
         if fault == "CANCEL_REFUSE":
             return self._record(operation_key, "CANCEL", status="REFUSED", reason="TOO_LATE")
-        places = (self._release_op(slot_id),) if slot_id else ()
+        places = (self.release_op(slot_id),) if slot_id else ()
         try:
             record = self._record(operation_key, "CANCEL", places, status="CANCELLED")
         except PlaceUnavailable:  # nothing to release (already free): cancel all the same

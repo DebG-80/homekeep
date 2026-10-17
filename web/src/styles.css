@@ -1,0 +1,79 @@
+/* HomeKeep: large type, high contrast, visible focus, usable at 200% zoom (TDD §8.5; NFR-03). */
+:root {
+  --ink: #111;
+  --paper: #fff;
+  --accent: #0b4f8a;
+  --danger: #8a1c0b;
+  --badge: #7a2e00;
+  --muted: #444;
+  --line: #bbb;
+  font: 1.25rem/1.5 system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.demo-badge {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  background: var(--badge);
+  color: #fff;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+header { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; margin: 0; }
+nav { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+nav a { color: var(--accent); }
+nav a[aria-current="page"] { font-weight: 700; }
+.who { color: var(--muted); }
+main { max-width: 48rem; margin: 0 auto; padding: 1rem; }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 1rem; top: 3rem; background: var(--paper); padding: 0.5rem; z-index: 20; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+:focus-visible { outline: 4px solid #f5a623; outline-offset: 2px; }
+button, input, select, textarea { font: inherit; }
+button {
+  padding: 0.5rem 1rem;
+  border: 2px solid var(--accent);
+  border-radius: 0.5rem;
+  background: var(--paper);
+  color: var(--accent);
+  cursor: pointer;
+}
+button.big { font-size: 1.5rem; padding: 1rem 1.5rem; min-width: 12rem; }
+button.mic { background: var(--accent); color: #fff; }
+button.mic[aria-pressed="true"] { background: #0a3a66; }
+button.stop, button.danger { border-color: var(--danger); color: var(--danger); }
+.controls { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+.state { font-size: 2rem; font-weight: 700; margin: 0.5rem 0; }
+[data-state="LISTENING"] .state { color: #0a6b2d; }
+[data-state="SPEAKING"] .state { color: var(--accent); }
+[data-state="DISCONNECTED"] .state, [data-state="PAUSED"] .state { color: var(--danger); }
+.hint, .voice-note { color: var(--muted); }
+.notice:empty, .voice-note:empty { display: none; }
+.notice { border-left: 6px solid var(--danger); padding-left: 0.75rem; }
+.context, .next-action { font-weight: 600; }
+.transcript { list-style: none; padding: 0; border-top: 1px solid var(--line); }
+.transcript li { padding: 0.5rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.say-form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+.say-form input { flex: 1 1 14rem; min-width: 0; padding: 0.5rem; border: 2px solid var(--muted); border-radius: 0.5rem; }
+.retry { margin-top: 0.5rem; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+caption { text-align: left; font-weight: 700; }
+th, td { text-align: left; padding: 0.4rem; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+tr.pending td, tr.pending th { background: #fff4d6; }
+.identity-list, .members, .issues, .requests, .manual, .safety { list-style: none; padding: 0; }
+.identity-list li { margin: 0.5rem 0; }
+.member { border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.75rem; margin: 0.75rem 0; }
+.grants { border: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.member button { margin: 0.5rem 0.5rem 0 0; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
+dd { margin: 0; overflow-wrap: anywhere; }
+textarea { width: 100%; }
+@media (max-width: 40rem) {
+  :root { font-size: 1.125rem; }
+  dl { grid-template-columns: 1fr; }
+}

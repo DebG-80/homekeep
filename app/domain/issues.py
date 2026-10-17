@@ -367,6 +367,8 @@ def set_safety_hold(ctx: OperationContext, reason: str) -> None:
                     hold["hold_id"], ctx.household_id, "HOLD", keys.META, index="SAFETY", sort=now
                 )
             ),
+            # Every hold the household ever had, so a purge finds all its references (G4-6).
+            ctx.table.put_new_op({"PK": pk, "SK": keys.hold_sk(hold["hold_id"]), "kind": "HOLD"}),
             ctx.table.put_new_op(
                 event_item(
                     ctx,

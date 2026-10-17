@@ -288,8 +288,8 @@ Trust principal `ecs.amazonaws.com`, with the AWS managed policy `service-role/A
 | `BUCKET_NAME` | test, demo | `<BUCKET_NAME>` | — | S3 documents bucket (§4) |
 | `DYNAMODB_ENDPOINT_URL` | local | `http://localhost:8001` | — | DynamoDB Local endpoint. **Allowed only when `ENV=local`**; the app refuses to start if it is set elsewhere |
 | `COGNITO_USER_POOL_ID` | test, demo | `<COGNITO_USER_POOL_ID>` | — | User pool (§5.1). The issuer and JWKS URLs are derived from it and `AWS_REGION` |
-| `COGNITO_DOMAIN` | test, demo | `https://<DOMAIN_PREFIX>.auth.us-east-1.amazoncognito.com` | — | Managed login base URL (§5.1). Public; served to the web client at `GET /config.json` from Slice 4 |
-| `COGNITO_WEB_CLIENT_ID` | test, demo | `<COGNITO_WEB_CLIENT_ID>` | — | Public `web` client (§5.3). Public; served at `GET /config.json` from Slice 4 |
+| `COGNITO_DOMAIN` | test, demo | `https://<DOMAIN_PREFIX>.auth.us-east-1.amazoncognito.com` | — | Managed login base URL (§5.1). Public; served to the web client at `GET /api/config` |
+| `COGNITO_WEB_CLIENT_ID` | test, demo | `<COGNITO_WEB_CLIENT_ID>` | — | Public `web` client (§5.3). Public; served at `GET /api/config` |
 | `COGNITO_MCP_CLIENT_ID` | test, demo | `<COGNITO_MCP_CLIENT_ID>` | — | Public `mcp-inspector` client (§5.3); accepted as a token `client_id` on `/mcp` |
 | `MODEL_ID` | — | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Bedrock model or inference profile ID |
 | `BEDROCK_REGION` | — | `us-east-1` | the value of `AWS_REGION` | Region of the Bedrock runtime endpoint |
@@ -345,7 +345,7 @@ In `us-east-1`, open Bedrock → Model access and enable **Anthropic Claude Haik
 | --- | --- |
 | Account ID | Password manager only; substituted into the IAM JSON in the console |
 | `TABLE_NAME`, `BUCKET_NAME` | ECS service environment |
-| `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`, `COGNITO_WEB_CLIENT_ID`, `COGNITO_MCP_CLIENT_ID` | ECS service environment; your local `.env.eval` for `make eval` (never `.env`, which `make run` loads; both are gitignored) |
+| `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`, `COGNITO_WEB_CLIENT_ID`, `COGNITO_MCP_CLIENT_ID` | ECS service environment. Not needed for `make eval`, which signs in locally against DynamoDB Local; its `.env.eval` holds only `MODEL_ID`, `BEDROCK_REGION` and, if you use one, `AWS_PROFILE` (never `.env`, which `make run` loads; both are gitignored) |
 | App URL (the Express Mode HTTPS domain) | `APP_BASE_URL` and `ALLOWED_ORIGINS` in the ECS environment; the Cognito `web` callback and sign-out URLs; the S3 CORS rule; Devpost "Testing instructions" (the field, not `docs/submission/testing-instructions.md`) |
 | MCP URL (`${APP_BASE_URL}/mcp`) | Devpost testing instructions field; MCP Inspector |
 | ECR repository URI | Your shell when tagging and pushing an image |

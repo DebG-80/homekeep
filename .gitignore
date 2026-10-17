@@ -41,3 +41,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Evaluation reports (make eval): local evidence, not source
+evals/report*.json

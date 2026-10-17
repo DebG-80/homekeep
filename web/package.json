@@ -12,7 +12,13 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
+    "playwright-core": "1.63.0",
     "typescript": "~7.0.2",
     "vite": "~8.3.4"
+  },
+  "dependencies": {
+    "oidc-client-ts": "3.5.0"
   }
 }

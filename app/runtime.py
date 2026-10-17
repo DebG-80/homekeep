@@ -23,3 +23,5 @@ class Runtime:
     attestor: Attestor
     local_issuer: LocalIssuer | None = None
     model_factory: Callable[[], Any] | None = None  # a Strands Model per turn
+    # Ends a user's Cognito sessions after revocation or purge; a no-op without Cognito.
+    sign_out: Callable[[str], None] = lambda username: None

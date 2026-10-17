@@ -211,3 +211,63 @@ Still deferred by P1-1: FR-19 reminders (AT-20), FR-04 documents and S3 (AT-05),
 - A catalog-reviewer page.
 - A real provider adapter and payments.
 - AWS resources, deploy, real Bedrock runs, commits and pushes.
+
+## Implementation deviations and notes (recorded during implementation, 17 Oct 2026)
+
+Built in one pass per P4-1: server additions, then the checkpoint (`make lint` clean, `make test` 363 passed), then the web client, E2E and documents. Every Proof test named above exists under that name and was written before its code, and was run before the code existed: each failed, by an import error for a missing module or by wrong behaviour. One exception: the stop-endpoint test was run together with `test_web.py`, whose missing module stopped collection, so its own failure was not observed separately. Regression guards are noted below.
+
+| # | Plan said | Implemented | Why |
+| --- | --- | --- | --- |
+| D4-1 | — | The in-process server core moved from `tests/contract/live.py` to `scripts/inprocess.py`; the test helper re-exports it | The eval and load runners need the same real server; `scripts/` must not import from `tests/`. |
+| D4-2 | Purge finds the household's REF items from its records | Every safety hold also writes a `HOLD#{hold_id}` marker in the household partition, in the hold's transaction | A household can have had several holds; only the latest is on `META`. Without the marker, older hold REFs would survive a purge. |
+| D4-3 | CLI actions go through domain functions | A new `ActorKind.OPERATOR` (`admin:cli`), allowed only `MEMBER_MANAGE` and `HOUSEHOLD_RESET` for the one household named on the command line | The members domain authorises the owner; the CLI needs an audited identity of its own rather than impersonating one. |
+| D4-4 | G4-13: memberships gain `display_name` | Also `identity_key` (the fixture key) | Reset rebuilds the seed's membership (role, grants, status) for the same Cognito subject. |
+| D4-5 | G4-4: the stop endpoint calls `cancel_pending_action` | `POST /api/sessions/{id}/stop {turn_id, channel}` runs the existing STOP command as its own turn | The STOP command already cancels and clears the pending action; making it a turn gives it `turn_id` idempotency for free. |
+| D4-6 | — | The "no delete route" test lists routes through `app.openapi()` | FastAPI 0.143 includes routers lazily, so `app.routes` does not show them. |
+| D4-7 | `make e2e` runs against `make run` | It also restarts DynamoDB Local (in-memory) and reseeds before Playwright | The grants test revokes a seeded helper; every run must start from the fixtures. `make e2e` therefore resets local data, as the README says. |
+| D4-8 | Web dependencies pinned | `playwright-core@1.63.0` is pinned as a direct dev dependency as well | `@axe-core/playwright` otherwise pulls a newer `playwright-core` whose types clash with `@playwright/test` 1.63.0. |
+| D4-9 | G4-10: the eval uses Deb's AWS credentials for Bedrock | It signs in with the local issuer against DynamoDB Local; `.env.eval` needs only `MODEL_ID`, `BEDROCK_REGION` and `AWS_PROFILE` (`make eval` loads it). The infra-contract §14 line that said Cognito values go in `.env.eval` is corrected. Guard trips count as failures, not only unsafe spoken text | Nothing on AWS but the model is touched. Zero tolerance means the model attempting a confirmation is a failure even when the guard catches it (TR-05). |
+| D4-10 | Audit every CLI action | Audit records live in the `OPS` partition (`AUDIT#…`, with `target_household`); reset also writes a `HOUSEHOLD_RESET` event in the household | A purged household's own partition cannot hold its audit trail (BRD §11.4). |
+| D4-11 | — | The speaker finishes by an estimated duration if `speechSynthesis` never fires `end` | Some browsers (no voices installed, headless) never fire it; the client would hang in SPEAKING. |
+| D4-12 | — | The talk view's current-issue line and next action come from `GET /api/household` and the turn response | No new endpoint was needed. |
+| D4-13 | — | `scripts.seed._local_table` is now `local_table`, and the fixture builders' `_in_env` is `in_env` | Both are shared with `hk_admin` and the eval runner. |
+
+Notes:
+- The E2E suite stubs `speechSynthesis` and `SpeechRecognition`. Those runs check the client's state machine and recovery, never voice (FR-21-AC2); `docs/voice-test-checklist.md` is the voice evidence.
+- Regression guards that passed when first written: the eval runner's hazard check (the server already speaks approved text), and the load script against an existing turn API.
+- The local fake model cannot hold a conversation, so the README's walk-through says that the full conversation needs the deployed model or `make eval`.
+- Still deferred (P1-1): reminders, documents and S3, the Ops page, the formal AT-29 run, `evals.yml`, `smoke.yml`.
+
+## Review fixes (17 Oct 2026)
+
+The `reviewer` subagent found 1 Critical and 10 Important issues, plus nits; the verifier passed the slice with four observations. Deb chose to fix all of them except HSTS, which is deferred. Each fix started with a test that was run and seen to fail for the reported reason, except where a row says "regression guard".
+
+| # | Finding | Fix | Test |
+| --- | --- | --- | --- |
+| C1 (Critical) | Cancelled or unfinished speech counted as "playback ended", so a "yes" could approve without a completed read-back | `Speaker` tracks a generation per `speak`. Only playback whose every utterance fired `end` is `completed`; `error` (which `cancel()` fires) never is. A cancelled or replaced call resolves `superseded` and the view ignores it. The length-estimate timer is gone: the only fallback is the synthesiser going quiet after it was heard speaking. Voice turns send the state the words were heard in | `web/e2e/voice.spec.ts` "c1: a yes is never sent during or after an unfinished read-back" (failed against the old client: it flipped to LISTENING mid-read-back) |
+| I1 | Reset and purge could give a shared slot place back twice; completed future visits leaked places | Each request's places are released in one transaction with a version-conditional delete of the request, so a racing second reset releases nothing. CANCEL_PENDING requests whose provider record is CANCELLED hold no place. COMPLETED requests on a future slot give theirs back | `tests/unit/admin/test_purge.py::test_i1_reset_never_gives_back_a_place_twice`, `::test_i1_two_resets_racing_release_each_place_once`, `::test_i1_reset_gives_back_a_future_place_after_the_visit_was_marked_done` |
+| I2 | Reset cleared the daily turn cap | `USAGE#` items are kept, with memberships | `::test_i2_reset_keeps_the_daily_turn_count` |
+| I3 | A reset that stopped midway deleted `META` and could not be run again | `META` is kept until the fixture overwrites it; memberships are never deleted. While fixing this, a prefix bug was found (memberships, `MEMBER#`, were deleted and rebuilt). The test now asserts the judge is still signed in after a failed reset, and it failed against that bug | `::test_i3_a_failed_reset_can_be_run_again` |
+| I4 | Leaving the Talk page left the microphone and listeners live | Views expose `dispose()`, which stops recognition and speech and removes their listeners; the router calls it before showing the next view. Late results check `isConnected` | `voice.spec.ts` "i4: leaving the Talk page turns the microphone off" |
+| I5 | Stop acted only on final results | An interim "stop" heard while speaking (not an echo) cancels speech at once and posts one stop; the final result for the same word within 3 s is ignored | `voice.spec.ts` "i5: an interim 'stop' cuts speech at once and stops only once" |
+| I6 | `member_ref` was the raw Cognito subject, in URLs and the access log | `member_ref` is an opaque hash of household and subject; the CLI resolves sign-in names to it. The container runs uvicorn with `--no-access-log` (request paths are not on the §10.2 allowlist) | `tests/unit/domain/test_members.py::test_g4_13_member_refs_are_opaque`; `test_household_api.py` (no `local-` in any ref); `tests/unit/test_container_contents.py::test_access_log_is_off_so_urls_never_reach_the_logs` |
+| I7 | An eval run where the model never answered passed | `RUN_ERROR` when the speech is the turn-error or cycle-cap template | `tests/unit/test_eval_runner.py::test_i7_a_run_the_model_never_answered_fails` |
+| I8 | Eval checks reused the product's guard; no citation check | The eval's own, wider booking-claim lexicon for confirmation-bait prompts, and `UNCITED_INSTRUCTION` for repair-like speech without a citation, ignoring reviewed hazard, observation and scope wording | `::test_i8_checks_do_not_rely_on_the_product_guard` (a phrasing the guard misses), `::test_i8_approved_observation_prompts_are_not_counted_as_instructions` (written after a probe found the approved fridge prompt matched "open the") |
+| I9 | An expired or revoked sign-in was reported as a lost connection | The token is fetched before the request; a failure becomes `ApiError(401, "SIGNED_OUT")`, which the talk view reports as signed out | Not automated: local tokens cannot expire. Checked by reading; Deb's AWS run covers it |
+| I10 | A Cognito sign-out failure crashed the CLI after the data had changed | Each sign-out is tried separately; the CLI prints who was and was not signed out, and exits 1 if any failed | `tests/unit/admin/test_cli.py::test_i10_a_failed_sign_out_is_reported_not_crashed` |
+| N | Revocation also cancelled approvals already sent to the provider | Only approvals not yet dispatched (PENDING, or APPROVED whose request does not carry that approval) are cancelled | `test_members.py::test_revocation_cancels_waiting_approvals_but_not_a_booking_already_sent` |
+| N | `BEYOND_OWNER` never exercised | A domain test with an owner holding fewer grants | `test_members.py::test_fr20_grants_never_beyond_the_owners_own` (regression guard: the check already existed) |
+| N | The infra contract named `GET /config.json` | Corrected to `GET /api/config` | — |
+| N | Staff case errors were silent | A message when a case cannot be opened | Not automated |
+| N | A Cognito `?error=` callback could loop back to sign-in | Shows "Sign-in didn't complete…" instead | Not automated: needs Cognito |
+| N | A resend after a lost session repeated the "You:" line | The resend path does not add a line | Not automated |
+| N | README phone number | "Give a made-up address and phone number" | — |
+| Verifier | `make eval` did not check its prerequisites; the CLI did not check the pool name | `make eval` refuses without DynamoDB Local on :8001; the AWS target refuses a user pool whose name does not match the table's `-test`/`-demo` suffix | `test_cli.py::test_cli_refuses_a_user_pool_that_is_not_test_or_demo` |
+
+Deferred or unchanged:
+- **HSTS:** deferred. Deb checks on the first deploy whether the Express Mode HTTPS domain already sends it.
+- **`purge_household` does not itself check for a test household:** unchanged. It is reachable only through `hk-admin`, behind the `-test`/`-demo` table and pool guards.
+- **Owner-facing member refs:** now opaque (I6), so G4-13's intent holds.
+- **Local `hk-admin` writes without `--yes`:** by design. Only the AWS target dry-runs.
+
+Gates after the fixes: `make lint` clean (187 files); `make test` 377 passed; `make e2e` 12 passed against a rebuilt `make run`. The talk view's keydown block was re-indented after that E2E run (whitespace only; typecheck clean).

@@ -16,3 +16,10 @@ def test_image_ships_the_catalog_and_fixtures_the_app_reads() -> None:
         assert re.search(rf"^COPY {directory}/ \./{directory}/$", dockerfile, re.MULTILINE), (
             directory
         )
+
+
+def test_access_log_is_off_so_urls_never_reach_the_logs() -> None:
+    # Request paths carry opaque record IDs; TDD §10.2 allows only allowlisted, structured fields.
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    cmd = next(line for line in dockerfile.splitlines() if line.startswith("CMD "))
+    assert "--no-access-log" in cmd

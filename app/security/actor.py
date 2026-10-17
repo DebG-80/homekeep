@@ -14,6 +14,7 @@ class ActorKind(StrEnum):
     HOUSEHOLD = "HOUSEHOLD"
     STAFF = "STAFF"
     SYSTEM = "SYSTEM"  # the reconciliation sweep (P3-1): may only reconcile
+    OPERATOR = "OPERATOR"  # the hk-admin CLI (P4-2): member management and reset, audited
 
 
 class HouseholdRole(StrEnum):
@@ -51,4 +52,6 @@ class Actor:
             return self.role.value
         if self.kind is ActorKind.SYSTEM:
             return "SYSTEM"
+        if self.kind is ActorKind.OPERATOR:
+            return "OPERATOR"
         return ",".join(sorted(g.value for g in self.groups)) or "unknown"

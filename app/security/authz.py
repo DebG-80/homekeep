@@ -25,6 +25,8 @@ class Action(StrEnum):
     HISTORY_READ = "history.read"
     SERVICE_BOOK = "service.book"
     RESOLUTION_CONFIRM = "resolution.confirm"
+    MEMBER_MANAGE = "member.manage"  # change a helper's grants, or revoke them (FR-20)
+    HOUSEHOLD_RESET = "household.reset"  # "Reset my demo data" (judge households only)
 
 
 # The grant a helper needs for each action. None means owner only.
@@ -39,10 +41,20 @@ _HELPER_GRANT: dict[Action, Grant | None] = {
     Action.SERVICE_BOOK: Grant.BOOK,
     Action.CONSENT_RECORD: None,  # owner through a secured flow (BRD §4)
     Action.RESOLUTION_CONFIRM: None,  # helpers only if explicitly delegated; not in H
+    Action.MEMBER_MANAGE: None,
+    Action.HOUSEHOLD_RESET: None,
 }
 
 
+# What the hk-admin operator may do, for the one household named on its command line.
+_OPERATOR_ACTIONS = frozenset({Action.MEMBER_MANAGE, Action.HOUSEHOLD_RESET})
+
+
 def authorize(actor: Actor, action: Action, household_id: str) -> None:
+    if actor.kind is ActorKind.OPERATOR:
+        if action in _OPERATOR_ACTIONS and actor.household_id == household_id:
+            return
+        raise DomainError(ErrorCode.AUTH_DENIED, "OPERATOR_ACTION_NOT_PERMITTED")
     if actor.kind is not ActorKind.HOUSEHOLD:
         raise DomainError(ErrorCode.AUTH_DENIED, "STAFF_HOUSEHOLD_ACCESS_NOT_PERMITTED")
     if actor.household_id != household_id:

@@ -26,6 +26,11 @@ class TurnRequest(BaseModel):
     playback_ended_at: datetime | None = None
 
 
+class StopRequest(BaseModel):
+    turn_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,128}$")
+    channel: Literal["voice", "text"] = "text"
+
+
 def _error(error: DomainError) -> JSONResponse:
     return error_response(error)
 
@@ -75,6 +80,33 @@ def router() -> APIRouter:
                     client_state=body.client_state,
                     speech_started_at=body.speech_started_at,
                     playback_ended_at=body.playback_ended_at,
+                ),
+            )
+        except DomainError as error:
+            return _error(error)
+
+    @routes.post("/sessions/{session_id}/stop")
+    async def stop(
+        session_id: str,
+        body: StopRequest,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> Any:
+        """The stop control (TDD §8.3): the STOP command as its own turn, so a retry with the
+        same `turn_id` is one stop. It cancels the pending action and keeps committed state."""
+        try:
+            caller = await caller_of(request, authorization)
+            return await pipeline.handle_turn(
+                runtime_of(request),
+                caller,
+                session_id,
+                body.turn_id,
+                "stop",
+                voice=pipeline.VoiceContext(
+                    channel=body.channel,
+                    client_state=None,
+                    speech_started_at=None,
+                    playback_ended_at=None,
                 ),
             )
         except DomainError as error:

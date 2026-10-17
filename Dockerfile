@@ -39,9 +39,10 @@ USER 10001:10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + (os.environ.get('PORT') or '8000') + '/healthz', timeout=4)"]
-# Exactly one worker: the per-process attestation key depends on it (TDD §5.3, §11.3).
+# Exactly one worker: the per-process attestation key depends on it (TDD §5.3, §11.3). No access
+# log: request paths are not on the TDD §10.2 log allowlist.
 # Uvicorn trusts X-Forwarded-* only from 127.0.0.1 (its default), so behind the ALB the request
 # URL stays http://… and a direct caller cannot spoof it. Every public URL (OAuth callbacks,
 # Protected Resource Metadata, WWW-Authenticate resource_metadata) must be built from
 # APP_BASE_URL, never from the request (docs/infra-contract.md §8).
-CMD ["sh", "-c", "exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port \"${PORT:-8000}\" --workers 1 --proxy-headers"]
+CMD ["sh", "-c", "exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port \"${PORT:-8000}\" --workers 1 --proxy-headers --no-access-log"]

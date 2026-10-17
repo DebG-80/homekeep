@@ -12,26 +12,29 @@ changes nothing and never overwrites data a judge has added since.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import secrets
 import string
 import sys
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlsplit
 
 import boto3
 
-from app.domain.appliances import Category, normalise
+from app.admin.fixtures import FIXTURES as FIXTURES  # re-exported for callers of the seed
+from app.admin.fixtures import (
+    household_items,
+    in_env,
+    load_fixtures,
+    local_subjects,
+    staff_items,
+)
 from app.domain.errors import ConflictError
-from app.store import keys
 from app.store.schema import ensure_table
 from app.store.table import Table
 
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 LOCAL_TABLE = "homekeep-local"
 LOCAL_ENDPOINT = "http://localhost:8001"
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "dynamodb-local"}
@@ -45,137 +48,6 @@ class SeedReport:
     passwords: dict[str, str] = field(default_factory=dict)  # username -> new password
 
 
-def load_fixtures() -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    households = json.loads((FIXTURES / "households.json").read_text(encoding="utf-8"))
-    identities = json.loads((FIXTURES / "identities.json").read_text(encoding="utf-8"))
-    return households, identities["identities"]
-
-
-def _in_env(record: dict[str, Any], env: str | None) -> bool:
-    return env is None or env in record["envs"]
-
-
-def local_subjects(identities: Iterable[dict[str, Any]]) -> dict[str, str]:
-    """Deterministic subjects for DynamoDB Local; the local token issuer uses the same ones."""
-    return {identity["key"]: f"local-{identity['key']}" for identity in identities}
-
-
-def household_items(
-    household: dict[str, Any],
-    members: Sequence[tuple[dict[str, Any], str]],
-    seeded_at: str,
-    consent_version: str,
-) -> list[dict[str, Any]]:
-    household_id = household["household_id"]
-    pk = keys.household_pk(household_id)
-    items: list[dict[str, Any]] = [
-        {
-            "PK": pk,
-            "SK": keys.META,
-            "kind": "HOUSEHOLD",
-            "household_id": household_id,
-            "locale": "en-IN",
-            "timezone": "Asia/Kolkata",
-            "lifecycle": "ACTIVE",
-            "resettable": household["resettable"],
-            "storage_consent": household["storage_consent"],
-            "sharing_consent": household["sharing_consent"],
-            **{
-                attribute: {"value": household[attribute], "status": "USER_REPORTED"}
-                for attribute in ("service_address", "contact_route")
-                if household.get(attribute)
-            },
-            "created_at": seeded_at,
-            "updated_at": seeded_at,
-            "version": 1,
-        }
-    ]
-    for purpose in ("STORAGE", "SHARING"):
-        decision = household[f"{purpose.lower()}_consent"]
-        if decision:
-            items.append(
-                {
-                    "PK": pk,
-                    "SK": keys.consent_sk(purpose, seeded_at, "seed"),
-                    "kind": "CONSENT",
-                    "purpose": purpose,
-                    "decision": decision,
-                    "consent_version": consent_version,
-                    "actor_sub": "seed",
-                    "at": seeded_at,
-                }
-            )
-    for appliance in household["appliances"]:
-        category = Category(appliance["category"])
-        nickname_key = normalise(appliance["nickname"])
-        unknown = {"value": None, "status": "UNKNOWN", "provenance": None}
-        items.append(
-            {
-                "PK": pk,
-                "SK": keys.appliance_sk(appliance["appliance_id"]),
-                "kind": "APPLIANCE",
-                "appliance_id": appliance["appliance_id"],
-                "category": category.value,
-                "nickname": appliance["nickname"],
-                "nickname_key": nickname_key,
-                "room": appliance.get("room"),
-                "fields": {
-                    "brand": unknown,
-                    "model": appliance.get("model", unknown),
-                    "serial": unknown,
-                },
-                "conflicts": [],
-                "created_at": seeded_at,
-                "updated_at": seeded_at,
-                "version": 1,
-            }
-        )
-        items.append(
-            {
-                "PK": keys.ref_pk(appliance["appliance_id"]),
-                "SK": keys.META,
-                "kind": "REF",
-                "ref_id": appliance["appliance_id"],
-                "ref_kind": "APPLIANCE",
-                "household_id": household_id,
-                "record_sk": keys.appliance_sk(appliance["appliance_id"]),
-            }
-        )
-        items.append(
-            {
-                "PK": pk,
-                "SK": keys.nickname_sk(nickname_key),
-                "kind": "NICKNAME",
-                "appliance_id": appliance["appliance_id"],
-                "nickname": appliance["nickname"],
-            }
-        )
-    for identity, sub in members:
-        items.append(
-            {
-                "PK": pk,
-                "SK": keys.member_sk(sub),
-                "kind": "MEMBERSHIP",
-                "sub": sub,
-                "role": identity["role"],
-                "grants": identity["grants"],
-                "status": identity["status"],
-                "consent_version": consent_version,
-                "created_at": seeded_at,
-                "version": 1,
-            }
-        )
-        items.append(
-            {
-                "PK": keys.user_pk(sub),
-                "SK": keys.user_household_sk(household_id),
-                "kind": "MEMBERSHIP_LOOKUP",
-                "household_id": household_id,
-            }
-        )
-    return items
-
-
 def write_items(table: Table, items: Iterable[dict[str, Any]], report: SeedReport) -> None:
     for item in items:
         try:
@@ -185,49 +57,18 @@ def write_items(table: Table, items: Iterable[dict[str, Any]], report: SeedRepor
             report.existing += 1
 
 
-def staff_items(
-    identities: Iterable[dict[str, Any]], subjects: dict[str, str]
-) -> list[dict[str, Any]]:
-    """The staff directory (for assignment) and the demo provider's default technician (G3-3)."""
-    items: list[dict[str, Any]] = []
-    for identity in identities:
-        if identity.get("groups") and identity["key"] in subjects:
-            items.append(
-                {
-                    "PK": keys.staff_pk(subjects[identity["key"]]),
-                    "SK": keys.META,
-                    "kind": "STAFF",
-                    "sub": subjects[identity["key"]],
-                    "username": identity["username"],
-                    "groups": identity["groups"],
-                    "GSI1PK": "STAFF",  # the coordinator's technician list
-                    "GSI1SK": identity["username"],
-                }
-            )
-    if "tech_assigned" in subjects:
-        items.append(
-            {
-                "PK": keys.PROVIDER_PK,
-                "SK": "CONFIG",
-                "kind": "PROVIDER_CONFIG",
-                "default_technician_sub": subjects["tech_assigned"],
-            }
-        )
-    return items
-
-
 def seed_dynamo(
     table: Table, env: str | None, subjects: dict[str, str], report: SeedReport
 ) -> None:
     households, identities = load_fixtures()
-    write_items(table, staff_items([i for i in identities if _in_env(i, env)], subjects), report)
+    write_items(table, staff_items([i for i in identities if in_env(i, env)], subjects), report)
     for household in households["households"]:
-        if not _in_env(household, env):
+        if not in_env(household, env):
             continue
         members = [
             (identity, subjects[identity["key"]])
             for identity in identities
-            if identity.get("household") == household["household_id"] and _in_env(identity, env)
+            if identity.get("household") == household["household_id"] and in_env(identity, env)
         ]
         items = household_items(
             household, members, households["seeded_at"], households["consent_version"]
@@ -350,7 +191,7 @@ def seed_aws(
     otherwise only the named usernames are rotated."""
     report = SeedReport()
     _, identities = load_fixtures()
-    selected = [identity for identity in identities if _in_env(identity, env)]
+    selected = [identity for identity in identities if in_env(identity, env)]
     unknown = sorted(set(reset or ()) - {identity["username"] for identity in selected})
     if unknown:
         raise SeedError(f"--reset-passwords names users not seeded in {env}: {unknown}")
@@ -368,7 +209,7 @@ def print_report(report: SeedReport, out: TextIO) -> None:
         out.write("No new passwords were set.\n")
 
 
-def _local_table(endpoint_url: str, table_name: str) -> Table:
+def local_table(endpoint_url: str, table_name: str) -> Table:
     host = urlsplit(endpoint_url).hostname
     if host not in _LOCAL_HOSTS:
         raise SystemExit(f"--target local only writes to DynamoDB Local, not {host!r}")
@@ -402,7 +243,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
     args = parser.parse_args(argv)
 
     if args.target == "local":
-        table = _local_table(args.endpoint_url, args.table_name or LOCAL_TABLE)
+        table = local_table(args.endpoint_url, args.table_name or LOCAL_TABLE)
         print_report(seed_local(table), out)
         return 0
 

@@ -155,3 +155,18 @@ def default_local_model() -> ScriptedModel:
             say("This is the local test model. Your household context is loaded."),
         ]
     )
+
+
+@dataclass
+class LocalScripts:
+    """`make run` with the fake model: turns queued through `POST /local/fake-model/script` (plan
+    G4-7), so E2E tests can drive a whole journey. With nothing queued, the default local model
+    answers. Mounted only when ENV=local and MODEL_PROVIDER=fake; never on AWS."""
+
+    pending: deque[list[Step]] = field(default_factory=deque)
+
+    def queue(self, turns: list[list[Step]]) -> None:
+        self.pending.extend(turns)
+
+    def __call__(self) -> ScriptedModel:
+        return ScriptedModel(self.pending.popleft()) if self.pending else default_local_model()
