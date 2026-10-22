@@ -2,6 +2,11 @@
 
 Text version of `HomeKeep_AWS_Architecture_Interaction_Guide.pdf`. Numbers match the badges on `homekeep_aws_architecture.png`. A number identifies a connection, not a step order.
 
+**This release (H) differs from the PDF in three places**, and this file and the diagram (SVG and PNG, updated 21 Oct 2026) follow the release:
+- Document uploads and the S3 bucket (interactions 15 and 16, Flow E) are not in this release: FR-04 is deferred (P1-1, deb-inputs 1a). The diagram shows them dimmed.
+- `hk-admin` runs on the operator's machine and calls DynamoDB and Cognito directly with the operator's credentials. There is no `/api/admin` (P4-2). The judges' reset is in the app (`POST /api/household/reset`).
+- The Ops page is deferred (P1-1).
+
 ## Part 1 — Every numbered interaction
 
 | # | From → To | Channel | What happens | Why it matters |
@@ -20,14 +25,14 @@ Text version of `HomeKeep_AWS_Architecture_Interaction_Guide.pdf`. Numbers match
 | 12 | Domain services → Provider simulator | In-process adapter contract | Checks serviceability, lists slots, submits with the operation key, reads status, replaces and cancels demo bookings. Reconciliation runs on read, on resume and every 60 s. | Simulated service desk that must be disclosed (C07, BR-04, FR-13 to FR-15). |
 | 13 | Provider simulator → Amazon DynamoDB | Conditional writes | Keeps slot inventory (last slot taken by exactly one user), provider requests de-duplicated by operation key, and admin fault-injection settings. | Contention and timeout tests (AT-14, AT-15). |
 | 14 | Domain services → Guidance catalog | In-memory lookup + DynamoDB status overlay | Returns approved steps only for a verified exact model and symptom category, with source locator and evidence text. Otherwise it returns NO_APPROVED_GUIDANCE with a reason. Withdrawn items are blocked at runtime. | Evidence-based guidance (BR-05, FR-08, FR-23, AT-04, AT-24). |
-| 15 | Domain services → Amazon S3 | AWS SDK | Issues presigned upload forms, validates each upload (size and file signature), moves it from quarantine/ to validated/, and issues 5-minute presigned GETs for authorised viewers. | Optional document enrichment (FR-04, AT-05, NFR-07). |
-| 16 | Helper or staff browser → Amazon S3 | HTTPS presigned POST | The browser uploads a PDF, JPEG or PNG (≤ 10 MB) straight to quarantine/ using the presigned form; the file never passes through the container. | Documents are optional and never block reporting or booking (FR-04-AC1). |
-| 17 | Staff console → ALB → Staff & admin API | HTTPS, Bearer JWT (Cognito groups) | Coordinators and technicians open their queue and case views, and post service events such as VISIT_COMPLETED. | Staff surface (BRD §11.3). |
-| 18 | Staff & admin API → Domain services | In-process call | The same domain services apply role and assignment checks. Each event needs an event_id (de-duplication) and expected_version (older events cannot regress state). | FR-16, FR-17, AT-18, AT-35. |
+| 15 | *Not in this release.* Domain services → Amazon S3 | AWS SDK | Issues presigned upload forms, validates each upload (size and file signature), moves it from quarantine/ to validated/, and issues 5-minute presigned GETs for authorised viewers. | Optional document enrichment (FR-04, AT-05, NFR-07). |
+| 16 | *Not in this release.* Helper or staff browser → Amazon S3 | HTTPS presigned POST | The browser uploads a PDF, JPEG or PNG (≤ 10 MB) straight to quarantine/ using the presigned form; the file never passes through the container. | Documents are optional and never block reporting or booking (FR-04-AC1). |
+| 17 | Staff console → ALB → Staff API | HTTPS, Bearer JWT (Cognito groups) | Coordinators and technicians open their queue and case views, and post service events such as VISIT_COMPLETED. | Staff surface (BRD §11.3). |
+| 18 | Staff API → Domain services | In-process call | The same domain services apply role and assignment checks. Each event needs an event_id (de-duplication) and expected_version (older events cannot regress state). | FR-16, FR-17, AT-18, AT-35. |
 | 19 | External MCP client (MCP Inspector; Alexa+ in P) → ALB → MCP server /mcp | MCP 2025-11-25, Streamable HTTP, OAuth Bearer | Discovers the authorisation server from /.well-known/oauth-protected-resource, signs in at Cognito with the mcp-inspector client, then lists and calls customer tools. It can prepare an action but not approve one. | Proves a reusable, externally reachable MCP surface for judges; the path an Alexa+ adapter would use in P (FR-26). |
-| 20 | Admin / QA (hk-admin CLI) → ALB → /api/admin | HTTPS, admin-group JWT | Withdraws catalog items, sets provider fault injection for tests, manages grants, purges a test household, resets a judge household. All actions are audited. | FR-23, FR-24, BRD §11.4. |
+| 20 | Admin / QA (hk-admin CLI) → Amazon DynamoDB and Cognito | AWS SDK, the operator's own credentials (never the task role) | Withdraws and restores catalog items, sets provider fault injection for tests, manages grants, purges a test household, resets a judge household. Refuses tables and pools not named `-test` or `-demo`, writes nothing without `--yes`, and audits every action as `admin:cli`. | FR-23, FR-24, BRD §11.4. |
 | 21 | Amazon ECR → ECS Fargate task | Image pull | ECS pulls the ARM64 container image on each deploy or task restart. | Reproducible deployment (NFR-10). |
-| 22 | IAM task role → ECS Fargate task | Temporary credentials | The task receives least-privilege credentials for DynamoDB, S3, Bedrock and one Cognito admin call. No secrets are stored anywhere. | Secure transport and access (NFR-11). |
+| 22 | IAM task role → ECS Fargate task | Temporary credentials | The task receives least-privilege credentials for DynamoDB, Bedrock and two Cognito admin calls (sign-out and disable). No secrets are stored anywhere. | Secure transport and access (NFR-11). |
 | 23 | HomeKeep container → CloudWatch Logs | ECS log driver | Structured JSON logs with an allowlist of fields: correlation id, hashed actor, action, result, latency, token counts. No transcripts, addresses or tokens. | Observability without leaking personal data (NFR-07, NFR-09). |
 | 24 | AWS Budgets → Owner (email) | Budget alerts | Emails the owner at 50%, 80% and 100% of a USD 75 monthly budget. | Cost control while the demo stays live to 20 November (NFR-12). |
 
@@ -102,6 +107,8 @@ Arrows used: 2, 3, 4, 5, 6, 7, 8, 10, 11, 17, 18
 
 ### Flow E: Optional document upload and model verification
 
+> **Not in this release, except step 5.** Document upload (steps 1–4) is deferred (P1-1). In H a catalog reviewer verifies a model through the API alone: `POST /api/staff/appliances/{id}/verify-model`. There is no reviewer page.
+
 *Scenario:* A photo of the AC label is uploaded; a catalog reviewer verifies the model.
 
 Arrows used: 11, 15, 16, 17, 18
@@ -134,10 +141,10 @@ Arrows used: 10, 11, 12, 13, 14, 19
 
 Arrows used: 20, 21, 22, 23, 24
 
-1. [arrows 21] make deploy builds the ARM64 image and pushes it to ECR; ECS pulls it and starts one task.
+1. [arrows 21] The owner runs `make build`, pushes the ARM64 image to ECR by hand (there is no `make deploy`, P0-1), and updates the Express service; ECS pulls it and starts one task.
 2. [arrows 22] The task assumes its least-privilege IAM role; no credentials exist in code or configuration.
 3. [arrows 23] Every request logs redacted structured JSON to CloudWatch Logs, joined by correlation id.
-4. [arrows 20] Admin actions go through /api/admin: reset a judge household, withdraw a catalog item, set a provider fault for tests, purge a test household.
+4. [arrows 20] The operator runs `hk-admin` from their own machine: reset a judge household, withdraw a catalog item, set a provider fault for tests, purge a test household. Judges reset their own household from the household view.
 5. [arrows 24] AWS Budgets emails the owner at 50%, 80% and 100% of USD 75 per month.
 
-> The Ops page in the staff console (pending operations, manual-review items, errors, token cost estimate) reads DynamoDB through arrows 17, 18 and 11.
+> The Ops page (pending operations, errors, token cost estimate) is deferred (P1-1). The staff console's manual-review and warning-sign lists read DynamoDB through arrows 17, 18 and 11.

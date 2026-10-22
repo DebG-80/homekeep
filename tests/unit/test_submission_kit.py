@@ -20,7 +20,6 @@ FEEDBACK_TOOLS = (
     "Amazon Bedrock",
     "Strands Agents SDK",
     "Amazon DynamoDB (including DynamoDB Local)",
-    "Amazon S3",
     "Amazon Cognito",
     "Amazon ECS Express Mode (Fargate + ALB)",
     "Amazon ECR",

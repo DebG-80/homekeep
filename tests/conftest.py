@@ -28,7 +28,6 @@ def demo_env() -> dict[str, str]:
     return {
         "ENV": "demo",
         "TABLE_NAME": "homekeep-demo",
-        "BUCKET_NAME": "homekeep-demo-docs-placeholder",
         "COGNITO_USER_POOL_ID": "us-east-1_placeholder",
         "COGNITO_DOMAIN": "https://placeholder.auth.us-east-1.amazoncognito.com",
         "COGNITO_WEB_CLIENT_ID": "placeholder-web-client",

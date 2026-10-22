@@ -106,7 +106,7 @@ async function cognitoIdentity(config: ClientConfig): Promise<Identity> {
     authority: cognito.authority,
     client_id: cognito.client_id,
     redirect_uri: cognito.redirect_uri,
-    post_logout_redirect_uri: cognito.redirect_uri,
+    post_logout_redirect_uri: cognito.post_logout_redirect_uri,
     response_type: "code",
     scope: cognito.scope,
     userStore: new WebStorageStateStore({ store: sessionStorage }),
@@ -115,12 +115,12 @@ async function cognitoIdentity(config: ClientConfig): Promise<Identity> {
   const query = new URLSearchParams(location.search);
   if (query.has("error")) {
     // Cognito sent the user back with an error: say so, rather than redirecting in a loop.
-    history.replaceState(null, "", location.pathname + location.hash);
+    history.replaceState(null, "", "/");
     throw new SignInError("Sign-in didn't complete. Please reload the page to try again.");
   }
   if (query.has("code") && query.has("state")) {
     await manager.signinRedirectCallback();
-    history.replaceState(null, "", location.pathname + location.hash);
+    history.replaceState(null, "", "/"); // leave /auth/callback: the app lives at /
   }
   let user = await manager.getUser();
   if (!user || user.expired) {
@@ -147,7 +147,7 @@ async function cognitoIdentity(config: ClientConfig): Promise<Identity> {
       await manager.removeUser();
       location.href = `${cognito.domain}/logout?client_id=${encodeURIComponent(
         cognito.client_id,
-      )}&logout_uri=${encodeURIComponent(cognito.redirect_uri)}`;
+      )}&logout_uri=${encodeURIComponent(cognito.post_logout_redirect_uri)}`;
     },
   };
 }

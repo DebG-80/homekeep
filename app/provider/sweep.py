@@ -18,6 +18,7 @@ from app.domain.errors import DomainError
 from app.logging import log_error, log_event
 from app.security.actor import Actor, ActorKind
 from app.security.authz import authorize_system
+from app.store import keys
 from app.store.table import Table
 
 INTERVAL_SECONDS = 60
@@ -27,9 +28,15 @@ def sweep_once(table: Table, clock: Clock, faults_enabled: bool) -> int:
     """Reconcile every pending request once. Returns how many reached a definite outcome."""
     settled = 0
     for item in table.query_index("GSI1", "PENDING", forward=True):
-        household_id = item["household_id"]
+        # The identity is scoped to the partition the record lives in, never to a value the
+        # record carries; a record that disagrees with its own partition is skipped.
+        household_id = item["PK"].removeprefix(keys.HOUSEHOLD_PREFIX)
         actor = Actor(sub="system:reconciler", kind=ActorKind.SYSTEM, household_id=household_id)
-        authorize_system(actor, household_id)
+        try:
+            authorize_system(actor, item.get("household_id", ""))
+        except DomainError:
+            log_event("SWEEP", result="SCOPE_MISMATCH")
+            continue
         ctx = OperationContext(
             actor=actor,
             table=table,

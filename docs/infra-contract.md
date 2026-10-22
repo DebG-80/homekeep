@@ -35,74 +35,9 @@ Sources: TDD §3.1, §5.2, §6, §9.1, §10.2, §10.4, §11; HANDOFF §2, §4, �
 
 The table holds every item in TDD §6.1. One overloaded index serves both the staff queue and the reconciliation sweep (TDD §6.1, GSI1).
 
-## 4 S3 bucket (documents)
+## 4 S3 bucket: not in this release
 
-| Setting | Value |
-| --- | --- |
-| Bucket name | `homekeep-{env}-docs-<RANDOM_SUFFIX>`, passed as `BUCKET_NAME`. Do not put the account ID in the name |
-| Block Public Access | All four settings **on** |
-| Object ownership | Bucket owner enforced (ACLs disabled) |
-| Default encryption | SSE-S3 |
-| Versioning | Off |
-| Prefixes used by the app | `quarantine/` (uploads before validation) and `validated/` |
-
-**Bucket policy (TLS only).** Replace `${BUCKET_NAME}`.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "DenyInsecureTransport",
-      "Effect": "Deny",
-      "Principal": "*",
-      "Action": "s3:*",
-      "Resource": [
-        "arn:aws:s3:::${BUCKET_NAME}",
-        "arn:aws:s3:::${BUCKET_NAME}/*"
-      ],
-      "Condition": { "Bool": { "aws:SecureTransport": "false" } }
-    }
-  ]
-}
-```
-
-**CORS.** Browsers upload by presigned POST from the app origin only. Replace `${APP_BASE_URL}` with the exact origin (scheme and host, no trailing slash). This is the CLI format for `aws s3api put-bucket-cors --cors-configuration file://cors.json`. In the console's CORS editor, paste only the array inside `CORSRules`.
-
-```json
-{
-  "CORSRules": [
-    {
-      "AllowedOrigins": ["${APP_BASE_URL}"],
-      "AllowedMethods": ["POST"],
-      "AllowedHeaders": ["*"],
-      "ExposeHeaders": ["ETag"],
-      "MaxAgeSeconds": 3000
-    }
-  ]
-}
-```
-
-**Lifecycle.** CLI format, for `aws s3api put-bucket-lifecycle-configuration --lifecycle-configuration file://lifecycle.json`. In the console, create the same two rules in the Lifecycle rules form.
-
-```json
-{
-  "Rules": [
-    {
-      "ID": "expire-quarantine",
-      "Filter": { "Prefix": "quarantine/" },
-      "Status": "Enabled",
-      "Expiration": { "Days": 1 }
-    },
-    {
-      "ID": "abort-incomplete-uploads",
-      "Filter": { "Prefix": "" },
-      "Status": "Enabled",
-      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
-    }
-  ]
-}
-```
+Do not create a bucket. Document uploads (FR-04) are deferred (P1-1), so the app has no S3 code, the task role grants no S3 access (§6.1) and there is no `BUCKET_NAME` variable (§9). The design for when documents are built is in TDD §4.8 and §11.2 (deb-inputs 1a, 21 Oct).
 
 ## 5 Cognito
 
@@ -111,13 +46,34 @@ The table holds every item in TDD §6.1. One overloaded index serves both the st
 | Setting | Value |
 | --- | --- |
 | Name | `homekeep-{env}` |
-| Self sign-up | **Off** (admin-created users only; `scripts/seed.py` creates them in a later slice) |
+| Self sign-up | **Off** (admin-created users only; `scripts/seed.py` creates them) |
 | Sign-in identifier | Username |
 | Required attributes | None |
 | MFA | Off (synthetic demo users) |
 | Account recovery | None needed (seed resets judge passwords) |
-| Prevent user-existence errors | On |
+| Prevent user-existence errors | On (an app-client setting; see §5.3) |
+| Feature plan | Essentials (managed login) |
+| Tags | §2 |
 | Domain | Managed login with a Cognito prefix domain: `https://<DOMAIN_PREFIX>.auth.us-east-1.amazoncognito.com`. Passed as `COGNITO_DOMAIN` |
+
+**Create the pool with the AWS CLI, not the console wizard.** The console's create wizard requires email or phone as a required attribute when you choose username sign-in, and it names the pool itself. A required email makes every seeded user fail ("The attribute email is required"), because the seed creates users with a username only. Required attributes can't be changed after creation, and the seed refuses a pool whose name doesn't end in `-{env}`. Run this with your own credentials:
+
+```bash
+aws cognito-idp create-user-pool \
+  --region us-east-1 \
+  --pool-name <POOL_NAME> \
+  --username-configuration CaseSensitive=false \
+  --admin-create-user-config AllowAdminCreateUserOnly=true \
+  --mfa-configuration OFF \
+  --account-recovery-setting 'RecoveryMechanisms=[{Priority=1,Name=admin_only}]' \
+  --user-pool-tier ESSENTIALS \
+  --user-pool-tags project=homekeep,env=demo,owner=<GITHUB_USER_NAME> \
+  --query 'UserPool.Id' --output text
+```
+
+For `test`, use `homekeep-test` and `env=test`. Leaving out `--username-attributes`, `--alias-attributes` and `--schema` gives username sign-in with no required attributes. `admin_only` means no self-service recovery. If your CLI doesn't recognise `--user-pool-tier`, drop that line. The command prints the pool ID, which goes in your password manager as `COGNITO_USER_POOL_ID`.
+
+Then, in the console under the pool's **Branding → Domain**, create a Cognito prefix domain (choose **Managed login** if asked for a version) and record its full URL as `COGNITO_DOMAIN`.
 
 ### 5.2 Resource server
 
@@ -146,7 +102,13 @@ Both clients are **public**: no client secret.
 | Refresh token lifetime | 1 day | 1 day |
 | Env var for the client ID | `COGNITO_WEB_CLIENT_ID` | `COGNITO_MCP_CLIENT_ID` |
 
-The callback and sign-out paths are fixed now so you can provision before Slice 4, and Slice 4 must use them (G-4). The `mcp-inspector` callback is MCP Inspector's default local callback; check it against the Inspector version you use (§15, G-5).
+**In the console** (Applications → App clients → Create app client), create §5.2's resource server first, so its scopes can be chosen:
+- **Application type:** **Single-page application (SPA)**, which makes a public client. Don't choose "Traditional web application": that one asks for a client secret.
+- **Name:** `web` or `mcp-inspector`.
+- **Return URL:** the callback URL above. For `web`, until the app URL exists, use a temporary `https://example.com/auth/callback` and replace it after the first deploy (§14).
+- After creating it, set the rest of the table: **Edit app client information** (auth flows, token lifetimes, token revocation, prevent user-existence errors), then **Login pages → Edit** (callback and sign-out URLs, Cognito user pool as the identity provider, authorization code grant, scopes).
+
+The callback and sign-out paths are fixed (G-4). The `mcp-inspector` callback is MCP Inspector's default local callback; check it against the Inspector version you use (§15, G-5).
 
 ### 5.4 Groups
 
@@ -194,29 +156,11 @@ Trust policy principal: `ecs-tasks.amazonaws.com`. Replace every `${…}` placeh
       ]
     },
     {
-      "Sid": "S3DocumentObjects",
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": [
-        "arn:aws:s3:::${BUCKET_NAME}/quarantine/*",
-        "arn:aws:s3:::${BUCKET_NAME}/validated/*"
-      ]
-    },
-    {
-      "Sid": "S3ListDocumentPrefixesP04",
-      "Effect": "Allow",
-      "Action": "s3:ListBucket",
-      "Resource": "arn:aws:s3:::${BUCKET_NAME}",
-      "Condition": {
-        "StringLike": { "s3:prefix": ["quarantine/*", "validated/*"] }
-      }
-    },
-    {
       "Sid": "BedrockHaikuInferenceProfile",
       "Effect": "Allow",
       "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
       "Resource": [
-        "arn:aws:bedrock:${AWS_REGION}:${ACCOUNT_ID}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "arn:aws:bedrock:${BEDROCK_REGION}:${ACCOUNT_ID}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
         "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
         "arn:aws:bedrock:us-east-2::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
         "arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -235,7 +179,13 @@ Trust policy principal: `ecs-tasks.amazonaws.com`. Replace every `${…}` placeh
 Notes:
 
 - **DynamoDB transactions.** IAM has no `dynamodb:TransactWriteItems` action. A transaction is authorised through the action of each item in it: `PutItem`, `UpdateItem` and `DeleteItem`, plus `ConditionCheckItem` for condition checks (DynamoDB developer guide, "Using IAM with DynamoDB transactions"). The policy therefore lists those instead.
-- **Bedrock regions.** The three foundation-model ARNs are the US regions the `us.` profile is expected to route to. Check the profile's destination regions in the Bedrock console (Cross-region inference → the Haiku 4.5 US profile) and add or remove ARNs to match exactly (§15).
+- **Bedrock regions.** The three foundation-model ARNs are the US regions the `us.` profile is expected to route to. Print the profile's actual destinations and make the `foundation-model` lines match them exactly (§11, §15):
+
+  ```bash
+  aws bedrock get-inference-profile --region us-east-1 \
+    --inference-profile-identifier us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+    --query 'models[].modelArn' --output text
+  ```
 - Converse calls are authorised by `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`.
 
 ### 6.2 Task execution role `homekeep-{env}-exec`
@@ -283,9 +233,8 @@ Trust principal `ecs.amazonaws.com`, with the AWS managed policy `service-role/A
 | `ENV` | local, test, demo | `demo` | — | One of `local`, `test`, `demo`. Selects the rules below |
 | `LOG_LEVEL` | — | `INFO` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 | `PORT` | — | `8000` | `8000` | Port Uvicorn listens on inside the container |
-| `AWS_REGION` | — | `us-east-1` | `us-east-1` | Region for DynamoDB, S3 and Cognito. ECS on Fargate sets it automatically |
+| `AWS_REGION` | — | `us-east-1` | `us-east-1` | Region for DynamoDB and Cognito. ECS on Fargate sets it automatically |
 | `TABLE_NAME` | test, demo | `homekeep-demo` | `homekeep-local` when `ENV=local` | DynamoDB table (§3) |
-| `BUCKET_NAME` | test, demo | `<BUCKET_NAME>` | — | S3 documents bucket (§4) |
 | `DYNAMODB_ENDPOINT_URL` | local | `http://localhost:8001` | — | DynamoDB Local endpoint. **Allowed only when `ENV=local`**; the app refuses to start if it is set elsewhere |
 | `COGNITO_USER_POOL_ID` | test, demo | `<COGNITO_USER_POOL_ID>` | — | User pool (§5.1). The issuer and JWKS URLs are derived from it and `AWS_REGION` |
 | `COGNITO_DOMAIN` | test, demo | `https://<DOMAIN_PREFIX>.auth.us-east-1.amazoncognito.com` | — | Managed login base URL (§5.1). Public; served to the web client at `GET /api/config` |
@@ -319,7 +268,16 @@ Trust principal `ecs.amazonaws.com`, with the AWS managed policy `service-role/A
 
 ## 11 Bedrock model access
 
-In `us-east-1`, open Bedrock → Model access and enable **Anthropic Claude Haiku 4.5**. Confirm the US inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0` is listed under Cross-region inference, and note its destination regions for §6.1.
+The Bedrock console no longer has a Model access page: serverless models are available by default, but Anthropic may ask a first-time account for use-case details. Check access with one call, using your own credentials:
+
+```bash
+aws bedrock-runtime converse --region us-east-1 \
+  --model-id us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+  --messages '[{"role":"user","content":[{"text":"Say hello in five words."}]}]' \
+  --query 'output.message.content[0].text' --output text
+```
+
+A short greeting means access works. An AccessDenied that mentions a use-case form or AWS Marketplace means: open **Bedrock → Model catalog → Claude Haiku 4.5**, submit the form the page asks for, and try again. (In the console, **Model catalog → Claude Haiku 4.5 → Open in playground** is the same check.) Then print the profile's destination regions with the `get-inference-profile` command in §6.1 and match the task role's foundation-model ARNs to them.
 
 ## 12 Budgets
 
@@ -344,9 +302,9 @@ In `us-east-1`, open Bedrock → Model access and enable **Anthropic Claude Haik
 | Output | Where it goes |
 | --- | --- |
 | Account ID | Password manager only; substituted into the IAM JSON in the console |
-| `TABLE_NAME`, `BUCKET_NAME` | ECS service environment |
+| `TABLE_NAME` | ECS service environment |
 | `COGNITO_USER_POOL_ID`, `COGNITO_DOMAIN`, `COGNITO_WEB_CLIENT_ID`, `COGNITO_MCP_CLIENT_ID` | ECS service environment. Not needed for `make eval`, which signs in locally against DynamoDB Local; its `.env.eval` holds only `MODEL_ID`, `BEDROCK_REGION` and, if you use one, `AWS_PROFILE` (never `.env`, which `make run` loads; both are gitignored) |
-| App URL (the Express Mode HTTPS domain) | `APP_BASE_URL` and `ALLOWED_ORIGINS` in the ECS environment; the Cognito `web` callback and sign-out URLs; the S3 CORS rule; Devpost "Testing instructions" (the field, not `docs/submission/testing-instructions.md`) |
+| App URL (the Express Mode HTTPS domain) | `APP_BASE_URL` and `ALLOWED_ORIGINS` in the ECS environment; the Cognito `web` callback and sign-out URLs; Devpost "Testing instructions" (the field, not `docs/submission/testing-instructions.md`) |
 | MCP URL (`${APP_BASE_URL}/mcp`) | Devpost testing instructions field; MCP Inspector |
 | ECR repository URI | Your shell when tagging and pushing an image |
 | Judge and QA usernames and passwords (printed once by the seed, §14.1) | Password manager, and the Devpost testing field for the judge logins only |
@@ -373,10 +331,9 @@ The first run only prints the target (account, region, pool name and ID, table, 
 - [ ] **S-1:** the service gets an AWS-provided HTTPS domain, and `curl -fsS https://<APP_DOMAIN>/healthz` returns `{"status":"ok"}`.
 - [ ] **S-1:** the service runs in public subnets with no NAT gateway created (check VPC → NAT gateways).
 - [ ] **S-1:** ARM64 at 0.5 vCPU / 1 GB is accepted, and the running task shows `ARM64`.
-- [ ] **Bedrock:** the US Haiku 4.5 profile's destination regions match the foundation-model ARNs in §6.1.
+- [x] **Bedrock:** the US Haiku 4.5 profile's destination regions match the foundation-model ARNs in §6.1. (demo, 22 Oct)
 - [ ] **G-5:** the `mcp-inspector` callback URL matches the Inspector version you run (its OAuth settings panel shows the redirect URL).
-- [ ] The IAM task-role policy passes the IAM policy editor's validation with no errors.
-- [ ] S3: an `http://` request to the bucket is denied; Block Public Access shows all four settings on.
+- [x] The IAM task-role policy passes the IAM policy editor's validation with no errors. (demo, 22 Oct)
 - [ ] Cognito: self sign-up is off; token lifetimes read 60 min / 60 min / 1 day on both clients.
 - [ ] The log group retention reads 30 days.
 - [ ] The budget and its three alerts exist.
@@ -391,6 +348,7 @@ The TDD stays read-only; these are recorded here and in HANDOFF §1.
 | --- | --- | --- | --- |
 | P0-1 | No CDK and no `infra/`. This page is the provisioning checklist; there are no `make bootstrap`, `deploy` or `destroy` targets. For AT-32 the README points here | §4.1, §11.1, §11.5 steps 2 and 7 | Schedule: provisioning by hand against an exact checklist is faster for one owner than writing and debugging a stack |
 | P0-3 | Node 24 LTS in the image, `.nvmrc` and README | §11.5 step 1 (Node 20) | Node 20 has been end of life since 30 April 2026 |
-| P0-4 | Task role adds `dynamodb:ConditionCheckItem`, `s3:ListBucket` (prefix-conditioned) and `cognito-idp:AdminDisableUser`, and lists no `dynamodb:TransactWriteItems` | §11.2 | `ConditionCheckItem`: the condition checks inside booking transactions (TDD §6.2) need it, and IAM authorises transactions per item action. `ListBucket`: purge must find a household's objects under both prefixes (FR-24). `AdminDisableUser`: purge disables the household's Cognito users (TDD §6.2) |
-| P0-5 | The web client gets its public Cognito config (domain, client ID, scopes) at runtime from `GET /config.json`, built from the env vars in §9. The route lands in Slice 4 | Not covered by the TDD | One image serves both environments; nothing environment-specific is baked into the web bundle |
+| P0-4 | Task role adds `dynamodb:ConditionCheckItem` and `cognito-idp:AdminDisableUser`, and lists no `dynamodb:TransactWriteItems` | §11.2 | `ConditionCheckItem`: the condition checks inside booking transactions (TDD §6.2) need it, and IAM authorises transactions per item action. `AdminDisableUser`: purge disables the household's Cognito users (TDD §6.2) |
+| P0-5 | The web client gets its public Cognito config (domain, client ID, scopes) at runtime from `GET /api/config`, built from the env vars in §9 (Slice 4) | Not covered by the TDD | One image serves both environments; nothing environment-specific is baked into the web bundle |
+| P1-1, 1a | No S3 bucket, no S3 statements in the task role and no `BUCKET_NAME` (§4) | §4.8, §11.2 | Documents (FR-04) are deferred (P1-1); provisioning an unused bucket and granting access to it would add work and attack surface for nothing |
 | G-3, P1-3 | `CLOCK_OVERRIDE` is allowed in `local` and `test` and stops the app at startup in `demo`, instead of being ignored | §4.5 ("honoured only when `ENV=test`") | Silently ignoring it would hide a misconfiguration. P1-3 (16 Oct) also allows `local`, so clock-dependent E2E (AT-13 expiry, AT-34 rollover) runs against `make run`; `local` never runs on AWS |

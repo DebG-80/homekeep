@@ -20,6 +20,7 @@ from app.config import Settings
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"
 SCOPES = "openid homekeep/api homekeep/mcp"
+CALLBACK_PATH = "/auth/callback"
 
 
 def client_config(settings: Settings, *, local_sign_in: bool) -> dict[str, Any]:
@@ -29,7 +30,9 @@ def client_config(settings: Settings, *, local_sign_in: bool) -> dict[str, Any]:
             "authority": settings.cognito_issuer,
             "domain": settings.cognito_domain,
             "client_id": settings.cognito_web_client_id,
-            "redirect_uri": f"{settings.app_base_url}/",
+            # Fixed in infra-contract §5.3 (G-4): Cognito accepts only these registered URLs.
+            "redirect_uri": f"{settings.app_base_url}{CALLBACK_PATH}",
+            "post_logout_redirect_uri": f"{settings.app_base_url}/",
             "scope": SCOPES,
         }
     return {"env": settings.env, "local_sign_in": local_sign_in, "cognito": cognito}
@@ -82,5 +85,6 @@ def install(app: FastAPI, settings: Settings, web_dist: Path, *, local_sign_in: 
         app.mount("/assets", StaticFiles(directory=web_dist / "assets"), name="assets")
 
     @app.get("/", include_in_schema=False)
+    @app.get(CALLBACK_PATH, include_in_schema=False)  # where Cognito returns after sign-in
     async def page() -> FileResponse:
         return FileResponse(index, media_type="text/html", headers=page_headers)

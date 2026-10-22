@@ -27,3 +27,23 @@ def test_p3_1_sweep_reconciles_pending_requests_once(world: World) -> None:
         e for e in world.items(HH_A, keys.EVENT_PREFIX) if e["action"] == "SERVICE_CONFIRMED"
     ]
     assert sweep_event[-1]["actor_role"] == "SYSTEM"
+
+
+def test_n5_sweep_skips_a_pending_item_whose_household_does_not_match_its_partition(
+    world: World,
+) -> None:
+    """The sweep's identity is scoped to the partition the item lives in; an item claiming
+    another household is never reconciled under it."""
+    request = ready_request(world)
+    set_fault(world, HH_A, "TIMEOUT_AFTER_SUCCESS")
+    approval_id = approve(
+        world, "SUBMIT", request["request_id"], first_slot(world, request["request_id"])
+    )
+    approvals.execute_action(world.ctx(OWNER_A), approval_id)
+    item = world.table.get(keys.household_pk(HH_A), keys.request_sk(request["request_id"]))
+    world.table.put({**item, "household_id": "hh-somebody-else"})
+    assert sweep_once(world.table, world.clock, faults_enabled=True) == 0
+    still = world.table.get(keys.household_pk(HH_A), keys.request_sk(request["request_id"]))
+    assert still["state"] == "SUBMISSION_PENDING"
+    assert world.items("hh-somebody-else") == []  # nothing written under the other household
+    assert [e for e in world.items(HH_A, keys.EVENT_PREFIX) if e["actor_role"] == "SYSTEM"] == []
