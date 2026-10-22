@@ -271,3 +271,21 @@ Deferred or unchanged:
 - **Local `hk-admin` writes without `--yes`:** by design. Only the AWS target dry-runs.
 
 Gates after the fixes: `make lint` clean (187 files); `make test` 377 passed; `make e2e` 12 passed against a rebuilt `make run`. The talk view's keydown block was re-indented after that E2E run (whitespace only; typecheck clean).
+
+## Post-merge fixes (17 Oct 2026, branch `post-slice-4-fixes`)
+
+These items needed no input from Deb; the ones that do are listed in `plans/deb-inputs.md`. Each started with a test that was run first. Rows marked "guard" passed before the fix.
+
+| Item | Fix | Test |
+| --- | --- | --- |
+| Web callback path differed from infra-contract §5.3 (G-4) | `redirect_uri` is `${APP_BASE_URL}/auth/callback`, `post_logout_redirect_uri` is `${APP_BASE_URL}/`; the page is served at both | `tests/contract/test_web.py` (both tests updated) |
+| Library INFO lines reached the log stream (verifier observation) | `httpx`, `httpcore` and `mcp` loggers set to WARNING in `configure_logging` | `tests/unit/test_logging.py::test_library_request_logs_stay_out_of_the_log_stream` (reproduces FastMCP's INFO root) |
+| `CLOCK_OVERRIDE` accepted a bare epoch (Slice 0 nit) | ISO 8601 with an offset only | `tests/unit/test_config.py::test_inv10_clock_override_must_be_an_iso_timestamp_with_offset` |
+| The sweep's `authorize_system` was a tautology (Slice 3 N5) | The identity comes from the record's partition and is checked against the record's `household_id`; a mismatch is skipped and logged | `tests/unit/domain/test_sweep.py::test_n5_sweep_skips_…` (guard: the old code also wrote nothing, because the reconcile failed) |
+| The opaque member-reference test could not fail | Asserts the format, uniqueness per household, and refusal of a raw subject | `tests/unit/domain/test_members.py::test_g4_13_member_refs_are_opaque` |
+| `speak()` reported "completed" with nothing spoken | Returns `completed: false` | Not automated (TypeScript; typecheck and E2E green) |
+| Documentation | Contract §6.1 ARN region; testing instructions, video script, description and built-with brought up to date; S3 no longer claimed | — |
+| `BUCKET_NAME` required at startup although documents are deferred (deb-inputs 1a, 21 Oct) | `BUCKET_NAME` removed from settings and `.env.example`; contract §4 says not to create a bucket; S3 statements dropped from the §6.1 task role; §9, §14, §15 and §16 updated; the S3 product-feedback section removed | `tests/unit/test_config.py::test_nfr10_demo_env_requires_table_cognito_and_origin_vars`, `tests/unit/test_env_contract.py`, `tests/unit/test_submission_kit.py::test_br07_product_feedback_has_five_questions_per_tool` |
+| HANDOFF and architecture docs still showed S3, `/api/admin`, CDK and the Ops page (deb-inputs 4, 21 Oct) | HANDOFF decisions 3, 12, 13, 14 updated and decision 20 added; `interactions.md` marks 15, 16 and Flow E as not in this release, and routes arrow 20 to DynamoDB and Cognito; the SVG dims S3 and reroutes arrow 20, and the PNG is re-rendered from it | — |
+
+Gates: `make lint` clean (188 files); `make test` 380 passed; `make e2e` 12 passed; `GET /auth/callback` returns 200 on the rebuilt container.

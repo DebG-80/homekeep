@@ -88,7 +88,6 @@ def test_nfr10_demo_env_requires_table_cognito_and_origin_vars(
 
     for name in (
         "TABLE_NAME",
-        "BUCKET_NAME",
         "COGNITO_USER_POOL_ID",
         "COGNITO_DOMAIN",
         "COGNITO_WEB_CLIENT_ID",
@@ -99,6 +98,10 @@ def test_nfr10_demo_env_requires_table_cognito_and_origin_vars(
         for missing in ({k: v for k, v in demo_env.items() if k != name}, {**demo_env, name: " "}):
             with pytest.raises(ConfigError, match=f"{name} is required when ENV=demo"):
                 Settings.from_env(missing)
+
+    # Documents are deferred (P1-1), so there is no bucket to configure (deb-inputs 1a).
+    assert "BUCKET_NAME" not in Settings.env_var_names()
+    assert Settings.from_env({**demo_env, "BUCKET_NAME": "anything"}).table_name == "homekeep-demo"
 
     with pytest.raises(ConfigError, match="APP_BASE_URL must use https"):
         Settings.from_env({**demo_env, "APP_BASE_URL": "http://homekeep.example.com"})
@@ -170,3 +173,15 @@ def test_inv3_simulation_mode_is_not_an_env_setting(demo_env: dict[str, str]) ->
     assert "SIMULATION_MODE" not in Settings.env_var_names()
     with pytest.raises(ConfigError, match="SIMULATION_MODE is not configurable"):
         Settings.from_env({**demo_env, "SIMULATION_MODE": "LIVE"})
+
+
+def test_inv10_clock_override_must_be_an_iso_timestamp_with_offset() -> None:
+    # A bare epoch number is ambiguous to a reader of the environment; ISO 8601 only.
+    with pytest.raises(ConfigError, match="CLOCK_OVERRIDE"):
+        Settings.from_env(
+            {
+                "ENV": "local",
+                "DYNAMODB_ENDPOINT_URL": "http://localhost:8001",
+                "CLOCK_OVERRIDE": "1792531740",
+            }
+        )

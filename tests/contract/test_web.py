@@ -42,6 +42,11 @@ def test_index_and_assets_served_with_csp_and_config_has_no_secrets(site: LiveSe
     asset = httpx.get(f"{site.base_url}/assets/app.js", timeout=10)
     assert (asset.status_code, asset.text) == (200, "console.log('hk')")
     assert httpx.get(f"{site.base_url}/assets/missing.js", timeout=10).status_code == 404
+    # Cognito returns to the callback fixed in infra-contract §5.3: the same page, same policy.
+    callback = httpx.get(f"{site.base_url}/auth/callback?code=x&state=y", timeout=10)
+    assert callback.status_code == 200
+    assert callback.text == index.text
+    assert callback.headers["content-security-policy"] == csp
     # The MCP endpoint and its metadata are unaffected by the client at "/".
     metadata = httpx.get(f"{site.base_url}/.well-known/oauth-protected-resource", timeout=10)
     assert metadata.status_code == 200
@@ -65,6 +70,7 @@ def test_client_config_on_aws_names_only_public_cognito_settings(site: LiveServe
         "authority": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_EXAMPLE",
         "domain": "https://homekeep-test.auth.us-east-1.amazoncognito.com",
         "client_id": "exampleclientid",
-        "redirect_uri": f"{settings.app_base_url}/",
+        "redirect_uri": f"{settings.app_base_url}/auth/callback",  # infra-contract §5.3
+        "post_logout_redirect_uri": f"{settings.app_base_url}/",
         "scope": "openid homekeep/api homekeep/mcp",
     }

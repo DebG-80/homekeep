@@ -2,7 +2,7 @@
 
 **Credentials are entered only in the Devpost field. Never paste them here.** This file is public. It holds the wording for the Devpost "Testing instructions" field with `<PLACEHOLDERS>`; replace them only inside Devpost.
 
-TODO(slice-4): complete once the hosted demo, the seed script and the reset action exist. Check every step against the hosted demo before pasting.
+Deb: check every step against the hosted demo before pasting, and adjust any phrase that does not work there.
 
 ---
 
@@ -32,15 +32,25 @@ Each judge gets a separate demo household, so judges do not affect each other. U
 
 ## Try it by voice
 
-TODO(slice-4): the step-by-step journey (register an appliance, report a problem, answer questions, hear a safety warning, book a demo visit after the read-back, then confirm the fix), with the exact phrases that work well.
+Sign in with your household login and open **Talk**. Press **Start talking** (or the Space bar) and speak normally; wait for HomeKeep to finish before you answer. You can say **"stop"**, **"repeat that"** or **"slower"** at any time.
+
+1. **Let HomeKeep remember things:** say *"Please remember my appliances."* HomeKeep asks for permission; answer *"yes"* after it finishes asking.
+2. **Add an appliance:** *"I have an AC in the bedroom."*
+3. **Report a problem:** *"It isn't cooling."* Answer its questions one at a time; *"I'm not sure"* is always accepted.
+4. **Hear a safety warning (optional):** *"Now it smells like something is burning."* HomeKeep gives approved safety advice and stops routine checks.
+5. **Ask for a technician:** *"Please send someone."* When asked, give a made-up address and phone number, then choose a time such as *"tomorrow morning"*.
+6. **Approve the booking:** HomeKeep reads back the provider, the full date and time window, the fee (an estimate), the address, what is shared, and that this is a demonstration. When it has finished and asks *"Shall I book it?"*, say *"yes"*. You hear *"Your demo booking is confirmed for … This is a demonstration. No real technician will visit."*
+7. **Come back later:** reload the page and ask *"Is my visit booked?"* HomeKeep remembers the case.
+8. **After the visit:** sign in as the technician, open the case under **Service desk** and press **Visit completed** with a short note. Back in your household, say *"It works now, you can close it."* Only your answer closes the problem; the technician's report alone does not.
+9. **See the history:** open **Household and history** and choose **History** next to the appliance.
 
 ## Try it by text
 
-TODO(slice-4): the same journey using the text box, for judges without a microphone. Note that a typed "yes" counts for usability but is not treated as a voice approval.
+Every step above also works by typing into the box under the conversation and pressing Enter. This is useful if you have no microphone. A typed "yes" approves the booking for usability, but it is recorded as a text approval, never as a voice one.
 
 ## Check the MCP server with MCP Inspector
 
-1. Run MCP Inspector locally (`npx @modelcontextprotocol/inspector`). TODO(slice-2): pin the Inspector version that was tested.
+1. Run MCP Inspector locally (`npx @modelcontextprotocol/inspector@<INSPECTOR_VERSION>`). TODO(Deb): replace with the version you tested against the hosted demo.
 2. Connect with transport **Streamable HTTP** to `<APP_URL>/mcp`.
 3. Inspector discovers the authorisation server from the Protected Resource Metadata at `<APP_URL>/.well-known/oauth-protected-resource`.
 4. Use the pre-registered public client: Client ID `<MCP_INSPECTOR_CLIENT_ID>`, no secret, PKCE; the redirect URL is Inspector's default local callback. Sign in with your household login.
@@ -50,7 +60,7 @@ TODO(slice-4): the same journey using the text box, for judges without a microph
 
 ## Reset your demo data
 
-TODO(slice-4): where the "Reset my demo data" control is, and what it restores.
+Open **Household and history** and press **Reset my demo data** at the bottom (owner logins of the judge households only). It removes everything you added (appliances, problems, bookings and history) and puts your household back to its starting state. Your login keeps working, and you can start again at step 1.
 
 ## Known limits
 

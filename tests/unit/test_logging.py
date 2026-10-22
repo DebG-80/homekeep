@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from app.logging import hash_subject, log_event
+from app.logging import configure_logging, hash_subject, log_event
 
 
 def test_nfr07_logs_keep_only_allowlisted_fields(capsys: pytest.CaptureFixture[str]) -> None:
@@ -76,3 +76,17 @@ def test_nfr07_each_log_line_is_written_once() -> None:
     assert LOGGER.propagate is False
     ours = [h for h in LOGGER.handlers if type(h).__name__ == "_StderrHandler"]
     assert len(ours) == 1  # building the app twice must not add a second writer
+
+
+def test_library_request_logs_stay_out_of_the_log_stream() -> None:
+    """Only allowlisted JSON lines reach CloudWatch (TDD §10.2): the HTTP and MCP libraries'
+    own INFO lines (request URLs, session notices) are not written."""
+    root = logging.getLogger()
+    before = root.level
+    root.setLevel(logging.INFO)  # as FastMCP does when the app starts
+    try:
+        configure_logging("INFO")
+        for name in ("httpx", "httpcore", "mcp"):
+            assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING, name
+    finally:
+        root.setLevel(before)

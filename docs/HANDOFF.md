@@ -8,7 +8,7 @@ Written 29 September 2026; updated 4 October 2026 to adopt the AI-native SDLC wo
 | --- | --- | --- |
 | 1 | Build the **full BRD H scope** (not the reduced scope from the earlier assessment) | If time runs short, apply the TDD §14.2 cut line in order: FR-19 reminders → FR-04 staff upload UI (keep API) → Ops page charts → formal AT-29 load run. Never cut integrity controls, the hazard/output guards, or the MCP path. |
 | 2 | Alexa+ track via a **self-hosted MCP server** (spec 2025-11-25, Streamable HTTP), with the browser voice client as the simulated Alexa+ experience on top of it | The agent must call tools only through MCP. That is the "imported and actually called at runtime" rule. |
-| 3 | AWS Builder via Bedrock + Strands + DynamoDB + S3 + Cognito + ECS Express Mode | Document each service in the submission's Product Feedback answer (TDD §11.6). |
+| 3 | AWS Builder via Bedrock + Strands + DynamoDB + Cognito + ECS Express Mode (S3 dropped with documents, decision 20) | Document each service in the submission's Product Feedback answer (TDD §11.6). |
 | 4 | **Public GitHub repo** with an OSI licence (Apache-2.0 recommended) | Add the licence through GitHub's "Add file → Create new file → LICENSE → Choose a licence template" so it is detected and shown in the About panel, as the rules require. |
 | 5 | Owner provisions and deploys AWS; Claude Code writes the application | Claude Code never commits, pushes, or creates cloud resources. |
 | 6 | Load assumption: **at most 3 concurrent users**; three resettable judge households J1–J3 | One Fargate task, one Uvicorn worker. |
@@ -17,14 +17,15 @@ Written 29 September 2026; updated 4 October 2026 to adopt the AI-native SDLC wo
 | 9 | **No CDK or `infra/`** (14 Oct, P0-1). `docs/infra-contract.md` is the provisioning checklist; Deb provisions by console or CLI. No `make bootstrap/deploy/destroy`; for AT-32 the README points to the contract | Deviates from TDD §4.1, §11.1 and §11.5 steps 2 and 7. Recorded in `plans/slice-0.md`. |
 | 10 | **Minimal `web/` skeleton in Slice 0** (14 Oct, P0-2): Vite + TypeScript placeholder page, so the Dockerfile has its final shape and `package-lock.json` exists | Deviates from §6 (web was Slice 4). |
 | 11 | **Node 24 LTS** in the container, `.nvmrc` and README (14 Oct, P0-3) | Node 20 has been EOL since 30 Apr 2026. Deviates from TDD §11.5 step 1. |
-| 12 | **Task-role additions** (14 Oct, P0-4): `dynamodb:ConditionCheckItem`, prefix-conditioned `s3:ListBucket`, `cognito-idp:AdminDisableUser`; still no wildcard resources | Reasons in `docs/infra-contract.md` §16. Deviates from TDD §11.2. |
-| 13 | **Web client config at runtime** (14 Oct, P0-5): `GET /config.json` serves public Cognito config (domain, client ID, scopes) from env vars. Route lands in Slice 4; variable names fixed now | New; the TDD is silent. |
-| 14 | **Product feedback covers Amazon/AWS tools plus the MCP tools** (14 Oct, P0-6), 13 sections in `docs/product-feedback.md` | — |
+| 12 | **Task-role additions** (14 Oct, P0-4): `dynamodb:ConditionCheckItem` and `cognito-idp:AdminDisableUser`; no `dynamodb:TransactWriteItems`, which is not an IAM action (transactions are authorised per item action, D-3); still no wildcard resources. The prefix-conditioned `s3:ListBucket` went with the bucket (decision 20) | Reasons in `docs/infra-contract.md` §16. Deviates from TDD §11.2. |
+| 13 | **Web client config at runtime** (14 Oct, P0-5): `GET /api/config` serves public Cognito config (domain, client ID, scopes) from env vars. Built in Slice 4 | New; the TDD is silent. |
+| 14 | **Product feedback covers Amazon/AWS tools plus the MCP tools** (14 Oct, P0-6), 12 sections in `docs/product-feedback.md` (S3 removed, decision 20) | — |
 | 15 | **`docs/submission/feature-requests.md` holds requests to Amazon** (14 Oct, P0-7), each cross-linked to a friction-log entry | — |
 | 16 | **Scope is the BRD §3.3 minimum coherent release** (16 Oct, P1-1): register → report → guide or escalate → approved demo booking → resume → change → completion → customer confirms → history, plus the unknown-model and verified-model paths. All integrity and authorisation controls stay. Deferred unless time remains: FR-19 reminders, FR-04 documents and the S3 flow, the Ops page, the formal AT-29 load run, `evals.yml`, `smoke.yml` | Narrows decision 1 and the §6 Slice 4 content. Recorded in `plans/slice-1.md`. |
 | 17 | **All seeding lands in Slice 1** (16 Oct, P1-2): fixtures, local table creation and `make seed`, plus `scripts/seed.py --target aws` (Cognito users, then memberships), run only by Deb | TDD §11.5 implied Slice 4. |
 | 18 | **`CLOCK_OVERRIDE` allowed in `local` and `test`, refused in `demo`** (16 Oct, P1-3) | Deviates from TDD §4.5 and Slice 0 G-3; closes Slice 0 open item 4. |
 | 19 | **A hazard on a `SERVICE_PENDING` issue keeps `SERVICE_PENDING`** and only sets the safety flag (16 Oct, D1-3); other unresolved states go to `SERVICE_NEEDED` | Interprets BRD §7.1 ("→ SERVICE_NEEDED … preserve any valid booking"): otherwise the preserved booking's `VISIT_COMPLETED` would be undefined. Supported by TDD §7. Recorded in `plans/slice-1.md`. |
+| 20 | **No S3 bucket in H** (21 Oct, deb-inputs 1a): `BUCKET_NAME` removed from the app; infra-contract §4 says not to create a bucket, and the task role has no S3 statements | Documents (FR-04) were deferred by P1-1, so nothing used the bucket. Deviates from TDD §4.8 and §11.2; recorded in infra-contract §16 and `plans/slice-4.md`. |
 
 ## 2 Platform facts verified (25–26 Sep 2026; recheck before submission)
 
@@ -55,7 +56,7 @@ Written 29 September 2026; updated 4 October 2026 to adopt the AI-native SDLC wo
 Before application code, write `docs/infra-contract.md` for the owner to provision against. It should specify:
 
 - DynamoDB table name variable, key schema (PK/SK strings), GSI1 (GSI1PK/GSI1SK, projection ALL), TTL attribute `ttl`, on-demand billing
-- S3 bucket: block public access, SSE-S3, TLS-only policy, CORS for presigned POST from the app origin, lifecycle expiry 1 day on `quarantine/`
+- S3 bucket: block public access, SSE-S3, TLS-only policy, CORS for presigned POST from the app origin, lifecycle expiry 1 day on `quarantine/` (superseded: no bucket in H, decision 20)
 - Cognito:
   - user pool and managed login domain
   - resource server `homekeep` with scopes `homekeep/api` and `homekeep/mcp`
@@ -64,7 +65,7 @@ Before application code, write `docs/infra-contract.md` for the owner to provisi
   - token lifetimes: access 60 min, refresh 1 day
 - IAM task-role policy JSON (TDD §11.2)
 - Container: port, health check path `/healthz`, CPU/memory, arm64
-- Every environment variable, with an example value and whether it is required: `ENV`, `AWS_REGION`, `TABLE_NAME`, `BUCKET_NAME`, `COGNITO_*`, `MODEL_ID`, `APP_BASE_URL`, `ALLOWED_ORIGINS`, `FAULTS_ENABLED`, `CLOCK_OVERRIDE`, and so on
+- Every environment variable, with an example value and whether it is required: `ENV`, `AWS_REGION`, `TABLE_NAME`, `BUCKET_NAME` (removed, decision 20), `COGNITO_*`, `MODEL_ID`, `APP_BASE_URL`, `ALLOWED_ORIGINS`, `FAULTS_ENABLED`, `CLOCK_OVERRIDE`, and so on
 
 ## 6 Build order (slices)
 

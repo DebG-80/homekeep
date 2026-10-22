@@ -48,6 +48,9 @@ def configure_logging(level: str) -> None:
     """Called once by create_app: JSON lines on stderr (CloudWatch via the ECS log driver)."""
     LOGGER.setLevel(level)
     LOGGER.propagate = False  # FastMCP configures the root logger; never write a line twice
+    # Library INFO lines (request URLs, MCP session notices) are not on the allowlist (§10.2).
+    for library in ("httpx", "httpcore", "mcp"):
+        logging.getLogger(library).setLevel(logging.WARNING)
     if not any(isinstance(h, _StderrHandler) for h in LOGGER.handlers):
         LOGGER.addHandler(_StderrHandler())
 

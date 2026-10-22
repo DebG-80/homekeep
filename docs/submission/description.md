@@ -22,13 +22,13 @@ HomeKeep lets an elder report an appliance problem by voice, in their own words,
 - Reads a booking back in full (provider, full date, time window, fee or fee uncertainty, demo status) and books a **demo** technician only after the elder says "yes" at the right moment. The decision is made by deterministic code, never by the language model.
 - Closes a case only when the elder confirms the problem is fixed; a technician marking a visit complete is not enough.
 
-TODO(slice-4): confirm each bullet against the hosted demo before submission and delete any that is not demonstrable.
+Deb: confirm each bullet against the hosted demo before submission, and delete any that is not demonstrable.
 
 ## How we built it
 
-- **Alexa+ track:** a self-hosted MCP server (`/mcp`, spec `2025-11-25`, Streamable HTTP, stateless, OAuth via Amazon Cognito) built with the MCP Python SDK 1.29.1. HomeKeep's own agent calls its tools only through an MCP client over HTTP, so the MCP path is exercised on every turn. TODO(slice-2): link the code path `app/orchestrator/agent.py`.
+- **Alexa+ track:** a self-hosted MCP server (`/mcp`, spec `2025-11-25`, Streamable HTTP, stateless, OAuth via Amazon Cognito) built with the MCP Python SDK 1.29.1. HomeKeep's own agent calls its tools only through an MCP client over HTTP, so the MCP path is exercised on every turn (code path: `app/orchestrator/agent.py`, which connects through `mcp.client.streamable_http`).
 - **Conversation:** the Strands Agents SDK with Claude Haiku 4.5 on Amazon Bedrock (Converse API). The agent sees only customer tools; approval and execution tools are reachable only by the channel's deterministic approval guard.
-- **Data:** one Amazon DynamoDB table with optimistic versions, conditional writes and transactions; documents in a private Amazon S3 bucket with a quarantine-then-validate flow.
+- **Data:** one Amazon DynamoDB table with optimistic versions, conditional writes and transactions. (Document uploads to Amazon S3 are designed but not part of this release.)
 - **Hosting:** one ARM64 container on Amazon ECS Express Mode (Fargate behind an Application Load Balancer with an AWS-provided HTTPS domain), images in Amazon ECR, logs in CloudWatch, costs watched by AWS Budgets.
 - **Voice client:** TypeScript and Vite, using the browser's Web Speech API with the `en-IN` locale; the browser voice client is the simulated Alexa+ experience on top of the MCP server.
 - **Process:** an AI-native SDLC with Claude Code: an approved plan per slice, tests first, an independent verifier and a policy reviewer before each merge (`docs/SDLC.md`).

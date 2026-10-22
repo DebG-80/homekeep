@@ -11,8 +11,11 @@ EVENT_PREFIX = "EVT#"
 OBSERVATION_INFIX = "#OBS#"
 
 
+HOUSEHOLD_PREFIX = "HH#"
+
+
 def household_pk(household_id: str) -> str:
-    return f"HH#{household_id}"
+    return f"{HOUSEHOLD_PREFIX}{household_id}"
 
 
 def member_sk(sub: str) -> str:

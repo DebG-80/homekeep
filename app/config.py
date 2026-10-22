@@ -35,7 +35,6 @@ _REQUIRED_IN: Final[dict[str, tuple[str, ...]]] = {
     "local": ("dynamodb_endpoint_url",),
     "test": (
         "table_name",
-        "bucket_name",
         "cognito_user_pool_id",
         "cognito_domain",
         "cognito_web_client_id",
@@ -82,7 +81,6 @@ class Settings(BaseModel):
     port: int = Field(default=8000, ge=1, le=65535)
     aws_region: str = "us-east-1"
     table_name: str | None = None
-    bucket_name: str | None = None
     dynamodb_endpoint_url: str | None = None
     cognito_user_pool_id: str | None = None
     cognito_domain: str | None = None
@@ -141,6 +139,15 @@ class Settings(BaseModel):
     @classmethod
     def _normalise_base_url(cls, value: str | None, info: ValidationInfo) -> str | None:
         return _origin(value, info.field_name.upper()) if value else value
+
+    @field_validator("clock_override", mode="before")
+    @classmethod
+    def _iso_only(cls, value: Any) -> Any:
+        if isinstance(value, int | float) or (isinstance(value, str) and value.strip().isdigit()):
+            raise ValueError(
+                "CLOCK_OVERRIDE must be an ISO 8601 time, e.g. 2026-10-20T18:29:00+00:00"
+            )
+        return value
 
     @field_validator("clock_override")
     @classmethod

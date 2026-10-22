@@ -79,31 +79,6 @@ TODO(Deb).
 
 TODO(Deb).
 
-## Amazon S3
-
-- **Integration point in code:** `app/domain/documents.py` (planned, Slice 4); bucket in `docs/infra-contract.md` §4
-- **Friction-log entries:** TODO(Deb): link FL-NN entries, or write "none".
-
-**What did you use it for?**
-
-Private document bucket: presigned POST into `quarantine/`, magic-number and size validation, then copy to `validated/`; 5-minute presigned GET; lifecycle expiry of quarantine after 1 day.
-
-**What worked well?**
-
-TODO(Deb).
-
-**What needs improvement?**
-
-TODO(Deb).
-
-**How was onboarding?**
-
-TODO(Deb).
-
-**Would you build with it again?**
-
-TODO(Deb).
-
 ## Amazon Cognito
 
 - **Integration point in code:** `app/security/` (planned, Slice 1); pool in `docs/infra-contract.md` §5
@@ -186,7 +161,7 @@ TODO(Deb).
 
 **What did you use it for?**
 
-A least-privilege task role with no wildcard resources (DynamoDB table and index, S3 prefixes, the Bedrock profile and its model ARNs, two Cognito admin actions), plus the execution and Express Mode infrastructure roles.
+A least-privilege task role with no wildcard resources (DynamoDB table and index, the Bedrock profile and its model ARNs, two Cognito admin actions), plus the execution and Express Mode infrastructure roles.
 
 **What worked well?**
 

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
 from app.domain import approvals, members
+from app.domain.errors import DomainError
 from app.security.actor import Grant, HouseholdRole
 from app.store import keys
 from tests.unit.domain.booking_helpers import approve, first_slot, ready_request, set_fault
@@ -33,7 +38,11 @@ def _ref(world: World, sub: str) -> str:
 def test_g4_13_member_refs_are_opaque(world: World) -> None:
     _add_helper(world, "sub-helper-1", "view")
     ref = _ref(world, "sub-helper-1")
-    assert "sub-helper-1" not in ref  # the subject never leaves the server (TDD §10.2)
+    assert re.fullmatch(r"[0-9a-f]{24}", ref)  # opaque: the subject never leaves the server
+    assert ref != members.member_ref("hh-b", "sub-helper-1")  # and differs per household
+    expect_error = pytest.raises(DomainError)
+    with expect_error:  # the raw subject is not accepted in its place
+        members.set_grants(world.ctx(OWNER_A), "sub-helper-1", ["view"])
     assert members.set_grants(world.ctx(OWNER_A), ref, ["view", "edit"])["grants"] == [
         "view",
         "edit",

@@ -167,7 +167,8 @@ export class Speaker {
     const generation = ++this.generation;
     this.current = chunks.join(" ");
     if (!("speechSynthesis" in window) || chunks.length === 0) {
-      return Promise.resolve({ completed: true, superseded: false, endedAt: new Date() });
+      // Nothing was played, so nothing can count as a finished read-back.
+      return Promise.resolve({ completed: false, superseded: false, endedAt: new Date() });
     }
     const synth = window.speechSynthesis;
     const voice = synth.getVoices().find((v) => v.lang === "en-IN") ?? null;

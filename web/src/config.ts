@@ -4,7 +4,8 @@ export interface CognitoConfig {
   authority: string;
   domain: string;
   client_id: string;
-  redirect_uri: string;
+  redirect_uri: string; // the registered callback, /auth/callback (infra-contract §5.3)
+  post_logout_redirect_uri: string;
   scope: string;
 }
 
