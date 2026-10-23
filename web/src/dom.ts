@@ -28,7 +28,13 @@ export function h<K extends keyof HTMLElementTagNameMap>(
 export const DEMO_BADGE_TEXT = "DEMO — simulated service desk";
 
 export function demoBadge(): HTMLElement {
-  return h("p", { class: "demo-badge", role: "note" }, DEMO_BADGE_TEXT);
+  // A quiet tag in the menu bar (Deb, 23 Oct): still on every view, still says what it means.
+  return h(
+    "span",
+    { class: "demo-tag", role: "note", title: DEMO_BADGE_TEXT },
+    "Demo",
+    h("span", { class: "visually-hidden" }, " — simulated service desk"),
+  );
 }
 
 export function newId(prefix: string): string {

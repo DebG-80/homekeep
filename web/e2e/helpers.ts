@@ -84,7 +84,7 @@ export async function stubSpeech(
 export async function signIn(page: Page, identity: string): Promise<void> {
   await page.goto("/");
   await page.locator(`[data-identity="${identity}"]`).click();
-  await expect(page.locator(".demo-badge")).toHaveText("DEMO — simulated service desk");
+  await expect(page.locator("header .demo-tag")).toHaveText("Demo — simulated service desk");
 }
 
 export async function token(request: APIRequestContext, identity: string): Promise<string> {
