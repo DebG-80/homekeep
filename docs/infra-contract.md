@@ -107,6 +107,8 @@ Both clients are **public**: no client secret.
 - **Name:** `web` or `mcp-inspector`.
 - **Return URL:** the callback URL above. For `web`, until the app URL exists, use a temporary `https://example.com/auth/callback` and replace it after the first deploy (§14).
 - After creating it, set the rest of the table: **Edit app client information** (auth flows, token lifetimes, token revocation, prevent user-existence errors), then **Login pages → Edit** (callback and sign-out URLs, Cognito user pool as the identity provider, authorization code grant, scopes).
+- **Give each client a managed login style:** **Branding → Managed login → Create a style**, choose the client, keep the defaults. Without a style, Cognito's sign-in page says "Login pages unavailable". CLI equivalent: `aws cognito-idp create-managed-login-branding --user-pool-id <COGNITO_USER_POOL_ID> --client-id <CLIENT_ID> --use-cognito-provided-values`.
+- **URLs must match exactly**, including the trailing slash on the sign-out URL (`${APP_BASE_URL}/`). Cognito compares them character for character and answers `redirect_mismatch` otherwise.
 
 The callback and sign-out paths are fixed (G-4). The `mcp-inspector` callback is MCP Inspector's default local callback; check it against the Inspector version you use (§15, G-5).
 
@@ -220,7 +222,7 @@ Trust principal `ecs.amazonaws.com`, with the AWS managed policy `service-role/A
 | Uvicorn workers | Exactly 1 (set in the image; do not override the command) |
 | Task role / execution role | §6.1 / §6.2 |
 | Networking | Public subnets, no NAT gateway (S-1 check in §15) |
-| Logs | CloudWatch Logs, group `/ecs/homekeep-{env}`, retention **30 days** |
+| Logs | CloudWatch Logs, retention **30 days**. Express Mode creates the group itself, named `/aws/ecs/default/homekeep-{env}-<SUFFIX>`; after the first deploy, set its retention to 30 days and add the §2 tags (`aws logs put-retention-policy --log-group-name <LOG_GROUP> --retention-in-days 30`) |
 | Forwarded headers | Uvicorn trusts `X-Forwarded-*` only from `127.0.0.1`, so behind the ALB the app sees its own URL as `http://…`. This is deliberate: the app builds every public URL (OAuth callbacks, Protected Resource Metadata, `WWW-Authenticate` `resource_metadata`) from `APP_BASE_URL`, never from the request. Do not set `FORWARDED_ALLOW_IPS` |
 | Environment | §9 |
 
@@ -277,7 +279,7 @@ aws bedrock-runtime converse --region us-east-1 \
   --query 'output.message.content[0].text' --output text
 ```
 
-A short greeting means access works. An AccessDenied that mentions a use-case form or AWS Marketplace means: open **Bedrock → Model catalog → Claude Haiku 4.5**, submit the form the page asks for, and try again. (In the console, **Model catalog → Claude Haiku 4.5 → Open in playground** is the same check.) Then print the profile's destination regions with the `get-inference-profile` command in §6.1 and match the task role's foundation-model ARNs to them.
+A short greeting is not proof on its own: on 22–23 Oct the owner's CLI call answered while the task role's calls were refused with `ResourceNotFoundException` ("Model use case details have not been submitted for this account"). **Submit the Anthropic use-case form before the first deploy:** **Bedrock → Model catalog → Claude Haiku 4.5 → Submit use case details** (or **Open in playground**, which prompts for it). It takes effect within about 15 minutes. If the app's first turn answers "Something went wrong on my side" and the logs show `AGENT_FAILED` with `ResourceNotFoundException`, look in **CloudTrail → Event history** (event source `bedrock.amazonaws.com`) for the full `errorMessage`. Then print the profile's destination regions with the `get-inference-profile` command in §6.1 and match the task role's foundation-model ARNs to them.
 
 ## 12 Budgets
 
@@ -329,13 +331,13 @@ The first run only prints the target (account, region, pool name and ID, table, 
 
 - [ ] **S-1:** ECS Express Mode is the resource type used for the service, and the console or CLI shows its name.
 - [ ] **S-1:** the service gets an AWS-provided HTTPS domain, and `curl -fsS https://<APP_DOMAIN>/healthz` returns `{"status":"ok"}`.
-- [ ] **S-1:** the service runs in public subnets with no NAT gateway created (check VPC → NAT gateways).
-- [ ] **S-1:** ARM64 at 0.5 vCPU / 1 GB is accepted, and the running task shows `ARM64`.
+- [x] **S-1:** the service runs in public subnets with no NAT gateway created (check VPC → NAT gateways). (demo, 23 Oct)
+- [x] **S-1:** ARM64 at 0.5 vCPU / 1 GB is accepted, and the running task shows `ARM64`. (demo, 23 Oct)
 - [x] **Bedrock:** the US Haiku 4.5 profile's destination regions match the foundation-model ARNs in §6.1. (demo, 22 Oct)
 - [ ] **G-5:** the `mcp-inspector` callback URL matches the Inspector version you run (its OAuth settings panel shows the redirect URL).
 - [x] The IAM task-role policy passes the IAM policy editor's validation with no errors. (demo, 22 Oct)
 - [ ] Cognito: self sign-up is off; token lifetimes read 60 min / 60 min / 1 day on both clients.
-- [ ] The log group retention reads 30 days.
+- [x] The log group retention reads 30 days. (demo, 23 Oct)
 - [ ] The budget and its three alerts exist.
 - [ ] The seed (§14.1) ran, its passwords are in the password manager, and one judge login works through managed login.
 - [ ] No real value from this checklist was pasted into the repository.

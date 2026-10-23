@@ -5,7 +5,8 @@ The automated suite types instead of speaking. Seeded transcripts and stubbed sp
 ## Setup
 
 - Chrome desktop, current stable, on the deployed app (or `make run` for a rehearsal).
-- A headset, so HomeKeep doesn't hear itself.
+- A headset, so HomeKeep doesn't hear itself. Select it in Chrome **Settings → Privacy and security → Site settings → Microphone**: Chrome keeps its own microphone choice, and without this it listened to the wrong input and heard nothing (23 Oct run).
+- Speak, then pause: the phrase is sent after about a second of silence. **Esc is Stop** and cancels the turn; never press it to send.
 - Sign in as a judge household, then use **Reset my demo data** so the run starts clean.
 - After sign-in and the first microphone click, hide the screen or turn the monitor off. An observer fills in the table below.
 - Timing: a phone stopwatch, or a screen recording with an audible click track.

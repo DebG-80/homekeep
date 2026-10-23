@@ -29,6 +29,8 @@ Each judge gets a separate demo household, so judges do not affect each other. U
 1. Use **Chrome on a desktop or laptop**, current version. A headset gives the best voice results.
 2. Set Chrome's language list to include **English (India)**. HomeKeep listens with the `en-IN` locale.
 3. Allow the microphone when Chrome asks. If you decline, HomeKeep switches to typing.
+4. Chrome uses its own microphone choice, not always the one macOS or Windows is using. With a headset, open Chrome **Settings → Privacy and security → Site settings → Microphone** and pick the headset from the list; otherwise Chrome may listen to the built-in microphone and hear nothing.
+5. After you press **Start talking**, just speak and then pause: HomeKeep sends what you said by itself after about a second. **Esc is Stop**: it cancels the current turn, so don't press it to send.
 
 ## Try it by voice
 
