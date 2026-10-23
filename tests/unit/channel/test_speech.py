@@ -61,3 +61,29 @@ def test_model_thinking_tags_are_never_spoken_or_guarded() -> None:
     assert speak_agent_outcome(TurnOutcome(text="<thinking>only this</thinking>"))[0] == (
         templates.TURN_ERROR
     )
+
+
+def test_listed_slots_are_spoken_by_the_server_in_words() -> None:
+    def slot(day: str, words: str, window: str) -> dict[str, str]:
+        hours = {"AM": "10 am and 1 pm", "PM": "2 pm and 5 pm"}[window]
+        return {"slot_id": f"{day}#{window}", "date_words": words, "window_words": hours}
+
+    slots = [
+        slot("2026-10-24", "Saturday, 24 October", "AM"),
+        slot("2026-10-24", "Saturday, 24 October", "PM"),
+        slot("2026-10-25", "Sunday, 25 October", "AM"),
+        slot("2026-10-25", "Sunday, 25 October", "PM"),
+    ]
+    data = {"status": "OK", "data": {"slots": slots}}
+    listed = ToolCall("list_slots", {"request_id": "sr-1"}, data)
+    speech = speak_agent_outcome(
+        TurnOutcome(text="1. 2026-10-24 09:00 - 2026-10-24 12:00", tool_calls=[listed])
+    )[0]
+    assert speech == (
+        "I can offer Saturday, 24 October, between 10 am and 1 pm; Saturday, 24 October, "
+        "between 2 pm and 5 pm; or Sunday, 25 October, between 10 am and 1 pm. "
+        "Which one suits you?"
+    )
+    none = {"status": "OK", "data": {"slots": []}}
+    empty = ToolCall("list_slots", {"request_id": "sr-1"}, none)
+    assert "2026" not in speak_agent_outcome(TurnOutcome(text="", tool_calls=[empty]))[0]

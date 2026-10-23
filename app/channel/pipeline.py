@@ -28,6 +28,7 @@ from app.domain import approvals
 from app.domain.clock import DEFAULT_TIMEZONE
 from app.domain.context import OperationContext
 from app.domain.errors import DomainError, ErrorCode
+from app.domain.requests import WINDOW_WORDS, date_words
 from app.logging import log_error, log_event
 from app.orchestrator.agent import TurnOutcome, build_model, run_turn
 from app.orchestrator.prompt import build_system_prompt
@@ -51,6 +52,8 @@ _AGENT_SLACK_SECONDS = 1.0
 # the spoken text). Only server-made IDs and known categories: never the user's words.
 _SERVER_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _CATEGORIES = {"AC": "AC", "FRIDGE": "fridge", "TV": "TV"}
+_SLOT_ID = re.compile(r"(\d{4}-\d{2}-\d{2})#(AM|PM)")
+_ORDINALS = ("first", "second", "third")
 _THINKING = re.compile(r"<thinking>.*?(?:</thinking>|$)", re.IGNORECASE | re.DOTALL)
 _NO_PENDING = {
     "pending_approval_id": None,
@@ -135,6 +138,8 @@ def speak_agent_outcome(outcome: TurnOutcome) -> tuple[str, dict[str, Any] | Non
         data = _ok(call)
         if call.name == "prepare_action" and data:  # the server's read-back, verbatim (FR-12)
             return " ".join(templates.render_readback(data["readback"])), None, False, "AGENT"
+        if call.name == "list_slots" and data:  # the offer in words, in the remembered order
+            return templates.render_slots(data["slots"]), None, False, "AGENT"
         if call.name == "get_service_status" and data:  # the authoritative state (FR-15)
             return " ".join(templates.render_status(data)), None, False, "AGENT"
         if call.name == "confirm_resolution" and data:  # the customer's own answer (FR-17)
@@ -181,6 +186,13 @@ def _session_updates(outcome: TurnOutcome | None) -> dict[str, Any]:
             updates["active_issue_id"] = data["issue"]["issue_id"]
         elif call.name in _ISSUE_TOOLS and call.input.get("issue_id") and data is not None:
             updates["active_issue_id"] = call.input["issue_id"]
+        if call.name == "draft_service_request" and data and data.get("request"):
+            updates["active_request_id"] = data["request"]["request_id"]
+        elif call.name in _REQUEST_TOOLS and call.input.get("request_id") and data is not None:
+            updates["active_request_id"] = call.input["request_id"]
+        if call.name == "list_slots" and data:
+            spoken = data["slots"][: templates.MAX_SLOTS_SPOKEN]
+            updates["offered_slots"] = [slot["slot_id"] for slot in spoken]
         appliance = _appliance_in(call, data)
         if appliance:
             updates["active_appliance"] = appliance
@@ -214,6 +226,9 @@ def _appliance_in(call: Any, data: dict[str, Any] | None) -> dict[str, Any] | No
     return None
 
 
+_REQUEST_TOOLS = ("record_service_details", "list_slots", "prepare_action", "get_service_status")
+
+
 def session_context(session: dict[str, Any]) -> str:
     """Lines added to the system prompt about what this conversation is already about."""
     lines = []
@@ -230,6 +245,28 @@ def session_context(session: dict[str, Any]) -> str:
     issue_id = str(session.get("active_issue_id") or "")
     if _SERVER_ID.fullmatch(issue_id):
         lines.append(f"The open problem being discussed has issue_id {issue_id}.")
+    request_id = str(session.get("active_request_id") or "")
+    if _SERVER_ID.fullmatch(request_id):
+        lines.append(f"The demo visit request has request_id {request_id}.")
+    offered = []
+    for ordinal, slot_id in zip(_ORDINALS, session.get("offered_slots") or [], strict=False):
+        match = _SLOT_ID.fullmatch(str(slot_id))
+        if not match:
+            continue
+        try:
+            day = date_words(match.group(1))
+        except ValueError:  # date-shaped but not a date
+            continue
+        words = f"{day}, between {WINDOW_WORDS[match.group(2)]}"
+        offered.append(f"{ordinal}: slot_id {slot_id} ({words})")
+    if offered:
+        lines.append(
+            "Visit times read out to the user, in order: "
+            + "; ".join(offered)
+            + ". When the user picks one (by number, day or time), call prepare_action with "
+            "kind SUBMIT, this request_id and that slot_id. Never say yourself that a visit is "
+            "booked."
+        )
     return "\n".join(lines)
 
 

@@ -155,6 +155,19 @@ def render_outcome(result: dict[str, Any]) -> list[str]:
     )
 
 
+MAX_SLOTS_SPOKEN = 3
+NO_SLOTS = "I can't find a free demo visit time in the next few days. Shall I look at later dates?"
+
+
+def render_slots(slots: list[dict[str, Any]]) -> str:
+    """The first few demo slots in words (FR-13); the session remembers them in this order."""
+    options = [f"{s['date_words']}, between {s['window_words']}" for s in slots[:MAX_SLOTS_SPOKEN]]
+    if not options:
+        return NO_SLOTS
+    listed = options[0] if len(options) == 1 else "; ".join(options[:-1]) + f"; or {options[-1]}"
+    return f"I can offer {listed}. Which one suits you?"
+
+
 def render_status(status: dict[str, Any]) -> list[str]:
     from app.channel.guards import chunk_speech
 
