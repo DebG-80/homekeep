@@ -37,3 +37,27 @@ def test_scope_limit_text_is_spoken_for_fridge_and_tv() -> None:
     }
     speech = speak_agent_outcome(TurnOutcome("ignored", [ToolCall("get_guidance", {}, refusal)]))[0]
     assert speech == "I can't give checks for TVs yet. Does the small light come on?"
+
+
+def test_model_thinking_tags_are_never_spoken_or_guarded() -> None:
+    # Amazon Nova Pro on AWS (23 Oct) put its reasoning in <thinking> tags in the reply text.
+    spoken = speak_agent_outcome(
+        TurnOutcome(
+            text="<thinking> The TV was not found. I need to ask. </thinking> Which TV is it?"
+        )
+    )
+    assert spoken[0] == "Which TV is it?"
+    # The guard judges what is said: words that exist only inside the reasoning are not spoken.
+    reasoning_only = TurnOutcome(
+        text="<thinking>Do not tell them to use a screwdriver.</thinking> Okay."
+    )
+    assert speak_agent_outcome(reasoning_only)[:3] == ("Okay.", None, False)
+    # Several blocks, any case, and an unclosed block that runs to the end are all dropped.
+    mixed = TurnOutcome(
+        text="<Thinking>a</Thinking>Hello. <thinking>b</thinking>What is wrong?<thinking>c"
+    )
+    assert speak_agent_outcome(mixed)[0] == "Hello. What is wrong?"
+    # Reasoning and nothing else is an empty reply.
+    assert speak_agent_outcome(TurnOutcome(text="<thinking>only this</thinking>"))[0] == (
+        templates.TURN_ERROR
+    )

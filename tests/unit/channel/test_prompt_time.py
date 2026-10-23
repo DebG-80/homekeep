@@ -22,3 +22,11 @@ def test_prompt_routes_consent_required_to_prepare_action_and_answers_greetings(
     assert "Never ask for a yes yourself" in prompt
     # A bare greeting gets a short welcome that says what HomeKeep helps with, not a re-ask.
     assert 'If the user only greets you ("hi", "hello", "namaste"' in prompt
+
+
+def test_prompt_says_to_add_an_appliance_that_is_not_found() -> None:
+    # Nova Pro (23 Oct) kept calling resolve_appliance for a TV the household did not have.
+    prompt = build_system_prompt("2026-10-23", "10:00")
+    assert "If resolve_appliance finds nothing, ask whether to add it" in prompt
+    assert "call register_appliance once" in prompt
+    assert "Never register an appliance that is already saved" in prompt

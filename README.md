@@ -96,12 +96,12 @@ There is no infrastructure-as-code in this release.
 
 ### Operator commands (`hk-admin`)
 
-Run these with your own credentials, never the task role. Each one is audited. The AWS target refuses tables whose names don't end in `-test` or `-demo`, and writes nothing without `--yes`.
+Run these with your own credentials, never the task role. Each one is audited. The AWS target refuses tables whose names don't end in `-test` or `-demo`, and writes nothing without `--yes`, which goes before the command name.
 
 ```bash
 uv run python -m scripts.hk_admin --target local reset --household judge-1
-uv run python -m scripts.hk_admin --target aws --table-name homekeep-test --user-pool-id <POOL_ID> \
-  revoke --household qa-a --member hk-qa-a-booker --yes
+uv run python -m scripts.hk_admin --target aws --table-name homekeep-demo --user-pool-id <POOL_ID> \
+  --region us-east-1 --yes reset --household judge-1
 ```
 
 | Command | What it does |

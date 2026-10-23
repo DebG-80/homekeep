@@ -9,6 +9,7 @@ whenever those apply; the model's own words are spoken only after the output gua
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -44,6 +45,9 @@ _ISSUE_TOOLS = (
     "report_warning_sign",
 )
 _AGENT_SLACK_SECONDS = 1.0
+# Some models (Amazon Nova) write their reasoning into the reply inside <thinking> tags. It is
+# never spoken, guarded or stored; an unclosed block runs to the end of the text.
+_THINKING = re.compile(r"<thinking>.*?(?:</thinking>|$)", re.IGNORECASE | re.DOTALL)
 _NO_PENDING = {
     "pending_approval_id": None,
     "approval_expires_at": None,
@@ -157,7 +161,7 @@ def speak_agent_outcome(outcome: TurnOutcome) -> tuple[str, dict[str, Any] | Non
         break
     if outcome.stop != "END":
         return templates.CYCLE_CAP, None, False, "CAP"
-    text = outcome.text.strip()
+    text = re.sub(r"\s+", " ", _THINKING.sub(" ", outcome.text)).strip()
     if not text:
         return templates.TURN_ERROR, None, False, "AGENT"
     if output_guard(text).blocked:
