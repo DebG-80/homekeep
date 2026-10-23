@@ -58,9 +58,14 @@ def test_seed_local_is_idempotent_and_matches_brd_12_1(table: Table) -> None:
     }
     b_meta = table.get(keys.household_pk("qa-b"), keys.META)
     assert (b_meta["storage_consent"], b_meta["sharing_consent"]) == ("GRANTED", "DECLINED")
-    for judge in ("judge-1", "judge-2", "judge-3"):  # G1-2: judges start from consent
+    # Judges start with storage consent already given, as after assisted setup (FR-01): naming an
+    # appliance saves it with no separate permission turn (Deb, 23 Oct; replaces G1-2). Sharing
+    # stays unasked: the booking read-back says what is shared.
+    for judge in ("judge-1", "judge-2", "judge-3"):
         meta = table.get(keys.household_pk(judge), keys.META)
-        assert (meta["storage_consent"], meta["resettable"]) == (None, True)
+        assert (meta["storage_consent"], meta["sharing_consent"]) == ("GRANTED", None)
+        assert meta["resettable"] is True
+        assert table.query(keys.household_pk(judge), "CONSENT#STORAGE#")  # an auditable record
         assert table.query(keys.household_pk(judge), keys.APPLIANCE_PREFIX) == []
     assert table.query(keys.user_pk("local-coordinator")) == []  # staff have no household
 

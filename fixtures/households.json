@@ -77,7 +77,7 @@
         "demo"
       ],
       "resettable": true,
-      "storage_consent": null,
+      "storage_consent": "GRANTED",
       "sharing_consent": null,
       "appliances": []
     },
@@ -89,7 +89,7 @@
         "demo"
       ],
       "resettable": true,
-      "storage_consent": null,
+      "storage_consent": "GRANTED",
       "sharing_consent": null,
       "appliances": []
     },
@@ -101,7 +101,7 @@
         "demo"
       ],
       "resettable": true,
-      "storage_consent": null,
+      "storage_consent": "GRANTED",
       "sharing_consent": null,
       "appliances": []
     }
