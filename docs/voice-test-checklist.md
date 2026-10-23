@@ -15,7 +15,7 @@ The automated suite types instead of speaking. Seeded transcripts and stubbed sp
 
 | # | Say | Expect to hear | Pass? |
 | --- | --- | --- | --- |
-| 1 | "Please remember my appliances", then "yes" | The consent question; then "Thank you. I'll save your appliances…" | |
+| 1 | "Hi" | A greeting that says HomeKeep helps with an AC, fridge or TV. Judge households start with storage consent already given (assisted setup), so there is no permission turn | |
 | 2 | "I have an AC in the bedroom" | It is saved, and HomeKeep asks what is wrong | |
 | 3 | "It isn't cooling" | The problem is noted; one question at a time | |
 | 4 | "Send a technician" | It asks for an address, then a phone number | |

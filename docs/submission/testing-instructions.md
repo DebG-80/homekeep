@@ -36,8 +36,8 @@ Each judge gets a separate demo household, so judges do not affect each other. U
 
 Sign in with your household login and open **Talk**. Press **Start talking** (or the Space bar) and speak normally; wait for HomeKeep to finish before you answer. You can say **"stop"**, **"repeat that"** or **"slower"** at any time.
 
-1. **Let HomeKeep remember things:** say *"Please remember my appliances."* HomeKeep asks for permission; answer *"yes"* after it finishes asking.
-2. **Add an appliance:** *"I have an AC in the bedroom."*
+1. **Say hello:** *"Hi."* HomeKeep says what it helps with. Your household already allows HomeKeep to save your appliances, as if a family member set it up for you.
+2. **Add an appliance:** *"I have an AC in the bedroom."* If HomeKeep asks what you call it, give a name such as *"Bedroom AC"*; it is saved straight away.
 3. **Report a problem:** *"It isn't cooling."* Answer its questions one at a time; *"I'm not sure"* is always accepted.
 4. **Hear a safety warning (optional):** *"Now it smells like something is burning."* HomeKeep gives approved safety advice and stops routine checks.
 5. **Ask for a technician:** *"Please send someone."* When asked, give a made-up address and phone number, then choose a time such as *"tomorrow morning"*.
