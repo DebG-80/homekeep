@@ -65,6 +65,7 @@ class ScriptedModel(Model):
     def __init__(self, script: Iterable[Step]) -> None:
         self._script: deque[Step] = deque(script)
         self.tools_offered: list[str] = []
+        self.system_prompt: str | None = None  # the last one received, for tests
         self.observed: list[tuple[str, Any]] = []  # (tool name, envelope) as the model saw them
         self._names: dict[str, str] = {}
         self._counter = 0
@@ -89,6 +90,7 @@ class ScriptedModel(Model):
         **kwargs: Any,
     ) -> AsyncIterator[dict[str, Any]]:
         self.tools_offered = [spec["name"] for spec in (tool_specs or [])]
+        self.system_prompt = system_prompt
         self._observe(messages)
         step = self._script.popleft() if self._script else Say("")
         while isinstance(step, Wait):

@@ -27,7 +27,7 @@ Deb: confirm each bullet against the hosted demo before submission, and delete a
 ## How we built it
 
 - **Alexa+ track:** a self-hosted MCP server (`/mcp`, spec `2025-11-25`, Streamable HTTP, stateless, OAuth via Amazon Cognito) built with the MCP Python SDK 1.29.1. HomeKeep's own agent calls its tools only through an MCP client over HTTP, so the MCP path is exercised on every turn (code path: `app/orchestrator/agent.py`, which connects through `mcp.client.streamable_http`).
-- **Conversation:** the Strands Agents SDK with Claude Haiku 4.5 on Amazon Bedrock (Converse API). The agent sees only customer tools; approval and execution tools are reachable only by the channel's deterministic approval guard.
+- **Conversation:** the Strands Agents SDK on Amazon Bedrock (Converse API with tool use), running Amazon Nova Pro. The model is one environment variable; the app was designed for Claude Haiku 4.5, which needed an AWS Marketplace subscription the account could not complete before the deadline. The agent sees only customer tools; approval and execution tools are reachable only by the channel's deterministic approval guard.
 - **Data:** one Amazon DynamoDB table with optimistic versions, conditional writes and transactions. (Document uploads to Amazon S3 are designed but not part of this release.)
 - **Hosting:** one ARM64 container on Amazon ECS Express Mode (Fargate behind an Application Load Balancer with an AWS-provided HTTPS domain), images in Amazon ECR, logs in CloudWatch, costs watched by AWS Budgets.
 - **Voice client:** TypeScript and Vite, using the browser's Web Speech API with the `en-IN` locale; the browser voice client is the simulated Alexa+ experience on top of the MCP server.

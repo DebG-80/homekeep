@@ -2,7 +2,7 @@
 
 ## Devpost tags
 
-`python`, `fastapi`, `pydantic`, `amazon-bedrock`, `claude`, `strands-agents`, `model-context-protocol`, `alexa`, `amazon-dynamodb`, `amazon-cognito`, `amazon-ecs`, `aws-fargate`, `amazon-ecr`, `amazon-cloudwatch`, `aws-budgets`, `typescript`, `vite`, `web-speech-api`, `docker`, `github-actions`
+`python`, `fastapi`, `pydantic`, `amazon-bedrock`, `amazon-nova`, `strands-agents`, `model-context-protocol`, `alexa`, `amazon-dynamodb`, `amazon-cognito`, `amazon-ecs`, `aws-fargate`, `amazon-ecr`, `amazon-cloudwatch`, `aws-budgets`, `typescript`, `vite`, `web-speech-api`, `docker`, `github-actions`
 
 TODO(Deb): trim to the tags Devpost offers; add any that only exist as free text.
 
@@ -18,7 +18,7 @@ TODO(Deb): trim to the tags Devpost offers; add any that only exist as free text
 | Pydantic v2 | from `uv.lock` | Settings and schemas | `app/config.py` | In place (Slice 0) |
 | MCP Python SDK | `mcp==1.29.1`, protocol 2025-11-25 | Self-hosted MCP server and the agent's MCP client | `app/mcp_server/`, `app/orchestrator/agent.py` | Built (Slice 2) |
 | Strands Agents SDK | from `uv.lock` (≥ 1.55) | Agent loop, `MCPClient` with `tool_filters` | `app/orchestrator/` | Built (Slice 2) |
-| Amazon Bedrock, Claude Haiku 4.5 | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Converse API with tool use | `app/orchestrator/` | Built (Slice 2); real runs via `make eval` |
+| Amazon Bedrock, Amazon Nova Pro (deployed); Claude Haiku 4.5 (the default it was designed for) | `us.amazon.nova-pro-v1:0` via `MODEL_ID`; default `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Converse API with tool use | `app/orchestrator/` | Built (Slice 2); real runs via `make eval` |
 | Amazon DynamoDB (+ DynamoDB Local) | on-demand; local image 3.3.1 | All records; conditional writes, transactions, TTL, GSI | `app/store/`, `compose.yaml` | Built (Slices 1–4) |
 | Amazon S3 | — | Document uploads: presigned POST, quarantine, validation (designed in TDD §4.8) | — | Not in this release (documents deferred, P1-1) |
 | Amazon Cognito | — | PKCE sign-in, resource-server scopes, JWT verification for API and MCP | `app/security/` | Built (Slices 1–4): JWT verification; browser sign-in with PKCE |

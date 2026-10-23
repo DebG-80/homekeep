@@ -47,6 +47,10 @@ _ISSUE_TOOLS = (
 _AGENT_SLACK_SECONDS = 1.0
 # Some models (Amazon Nova) write their reasoning into the reply inside <thinking> tags. It is
 # never spoken, guarded or stored; an unclosed block runs to the end of the text.
+# The session's current appliance and problem, told to the model each turn (it otherwise sees only
+# the spoken text). Only server-made IDs and known categories: never the user's words.
+_SERVER_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_CATEGORIES = {"AC": "AC", "FRIDGE": "fridge", "TV": "TV"}
 _THINKING = re.compile(r"<thinking>.*?(?:</thinking>|$)", re.IGNORECASE | re.DOTALL)
 _NO_PENDING = {
     "pending_approval_id": None,
@@ -177,6 +181,9 @@ def _session_updates(outcome: TurnOutcome | None) -> dict[str, Any]:
             updates["active_issue_id"] = data["issue"]["issue_id"]
         elif call.name in _ISSUE_TOOLS and call.input.get("issue_id") and data is not None:
             updates["active_issue_id"] = call.input["issue_id"]
+        appliance = _appliance_in(call, data)
+        if appliance:
+            updates["active_appliance"] = appliance
         if call.name == "get_guidance" and data:
             updates["last_step_id"] = data["step"]["step_id"]
         if call.name == "prepare_action" and data:  # a new read-back awaits the user's answer
@@ -187,6 +194,43 @@ def _session_updates(outcome: TurnOutcome | None) -> dict[str, Any]:
                 readback_completed_at=None,
             )
     return updates
+
+
+def _appliance_in(call: Any, data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The appliance a call settled on: one registered, a single match, or the saved appliance a
+    duplicate registration points to."""
+    if call.name == "register_appliance" and data:
+        return {"appliance_id": data["appliance_id"], "category": data["category"]}
+    if call.name == "resolve_appliance" and data and len(data.get("matches", [])) == 1:
+        match = data["matches"][0]
+        return {"appliance_id": match["appliance_id"], "category": match["category"]}
+    if call.name == "register_appliance":
+        details = ((call.envelope or {}).get("error") or {}).get("details") or {}
+        if details.get("existing_appliance_id"):
+            category = str(call.input.get("category", ""))
+            return {"appliance_id": details["existing_appliance_id"], "category": category}
+    if call.name == "report_issue" and data and call.input.get("appliance_id"):
+        return {"appliance_id": call.input["appliance_id"], "category": ""}
+    return None
+
+
+def session_context(session: dict[str, Any]) -> str:
+    """Lines added to the system prompt about what this conversation is already about."""
+    lines = []
+    appliance = session.get("active_appliance") or {}
+    appliance_id = str(appliance.get("appliance_id") or "")
+    if _SERVER_ID.fullmatch(appliance_id):
+        category = _CATEGORIES.get(str(appliance.get("category", "")).upper())
+        what = f"the {category}" if category else "an appliance"
+        lines.append(
+            f"This conversation is about {what} with appliance_id {appliance_id}. Use that "
+            "appliance_id for report_issue and its other tools; don't ask for its name again "
+            "unless the user talks about a different appliance."
+        )
+    issue_id = str(session.get("active_issue_id") or "")
+    if _SERVER_ID.fullmatch(issue_id):
+        lines.append(f"The open problem being discussed has issue_id {issue_id}.")
+    return "\n".join(lines)
 
 
 def _response(
@@ -498,6 +542,9 @@ async def _agent_turn(
 ) -> TurnOutcome | None:
     settings = runtime.settings
     prompt = build_system_prompt(*local_prompt_time(runtime.clock.now()))
+    context = session_context(session)
+    if context:
+        prompt = f"{prompt}\n\nWhere this conversation stands:\n{context}"
     factory = runtime.model_factory or (lambda: build_model(settings))
 
     def work() -> TurnOutcome:

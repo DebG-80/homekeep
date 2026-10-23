@@ -77,8 +77,8 @@ export function talkView(api: Api): View {
     "aria-label": "Type what you want to say",
     placeholder: "Type here and press Enter",
   });
-  const mic = h("button", { id: "mic", type: "button", class: "big mic", "aria-pressed": "false" });
-  const stop = h("button", { id: "stop", type: "button", class: "big stop" }, "Stop");
+  const mic = h("button", { id: "mic", type: "button", class: "mic", "aria-pressed": "false" });
+  const stop = h("button", { id: "stop", type: "button", class: "stop" }, "Stop");
   const root: View = h("section", { class: "talk", "aria-label": "Talk to HomeKeep" });
 
   const recognizer = new Recognizer(onHeard, onInterim, onRecognitionError);
@@ -95,7 +95,7 @@ export function talkView(api: Api): View {
 
   function addLine(who: "You" | "HomeKeep", text: string): void {
     transcript.append(h("li", { class: who === "You" ? "you" : "homekeep" }, h("strong", {}, `${who}: `), text));
-    transcript.lastElementChild?.scrollIntoView({ block: "nearest" });
+    transcript.scrollTop = transcript.scrollHeight; // only the conversation scrolls
   }
 
   async function say(chunks: string[]): Promise<void> {
@@ -355,8 +355,7 @@ export function talkView(api: Api): View {
   );
 
   root.append(
-    stateLabel,
-    h("div", { class: "controls" }, mic, stop),
+    h("div", { class: "status-row" }, stateLabel, h("div", { class: "controls" }, mic, stop)),
     h(
       "p",
       { class: "hint" },
@@ -368,11 +367,15 @@ export function talkView(api: Api): View {
     nextAction,
     h("h2", { class: "visually-hidden" }, "Conversation"),
     transcript,
-    form,
     h(
-      "button",
-      { id: "retry", type: "button", class: "retry", onclick: () => void reconnect() },
-      "Check the connection again",
+      "div",
+      { class: "talk-footer" },
+      form,
+      h(
+        "button",
+        { id: "retry", type: "button", class: "retry", onclick: () => void reconnect() },
+        "Check the connection again",
+      ),
     ),
   );
   root.dispose = () => {

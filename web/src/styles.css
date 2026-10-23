@@ -13,23 +13,26 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
-.demo-badge {
-  margin: 0;
-  padding: 0.5rem 1rem;
+/* The page is one screen tall: the menu bar stays at the top and the view fills the rest. */
+.app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.demo-tag {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 0.5rem;
+  border-radius: 0.25rem;
   background: var(--badge);
   color: #fff;
+  font-size: 0.85rem;
   font-weight: 700;
-  position: sticky;
-  top: 0;
-  z-index: 10;
+  vertical-align: middle;
 }
-header { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--line); }
+header { flex: none; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; margin: 0; }
 nav { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
 nav a { color: var(--accent); }
 nav a[aria-current="page"] { font-weight: 700; }
 .who { color: var(--muted); }
-main { max-width: 48rem; margin: 0 auto; padding: 1rem; }
+main { flex: 1 1 auto; min-height: 0; overflow-y: auto; width: 100%; max-width: 48rem; margin: 0 auto; padding: 1rem; }
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: 1rem; top: 3rem; background: var(--paper); padding: 0.5rem; z-index: 20; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -47,8 +50,16 @@ button.big { font-size: 1.5rem; padding: 1rem 1.5rem; min-width: 12rem; }
 button.mic { background: var(--accent); color: #fff; }
 button.mic[aria-pressed="true"] { background: #0a3a66; }
 button.stop, button.danger { border-color: var(--danger); color: var(--danger); }
-.controls { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
-.state { font-size: 2rem; font-weight: 700; margin: 0.5rem 0; }
+/* Talk: status and buttons on one row; only the conversation scrolls; input pinned below. */
+.talk { display: flex; flex-direction: column; height: 100%; }
+.talk > * { flex: none; }
+.talk > p { margin: 0.25rem 0; }
+.status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.controls button { min-height: 2.75rem; padding: 0.4rem 1.1rem; font-weight: 600; }
+.state { font-size: 2rem; font-weight: 700; margin: 0.25rem 0; }
+.talk > .transcript { flex: 1 1 auto; min-height: 8rem; overflow-y: auto; margin: 0.5rem 0 0; }
+.talk-footer { border-top: 1px solid var(--line); padding-top: 0.25rem; }
 [data-state="LISTENING"] .state { color: #0a6b2d; }
 [data-state="SPEAKING"] .state { color: var(--accent); }
 [data-state="DISCONNECTED"] .state, [data-state="PAUSED"] .state { color: var(--danger); }
@@ -58,9 +69,9 @@ button.stop, button.danger { border-color: var(--danger); color: var(--danger); 
 .context, .next-action { font-weight: 600; }
 .transcript { list-style: none; padding: 0; border-top: 1px solid var(--line); }
 .transcript li { padding: 0.5rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-.say-form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+.say-form { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0; }
 .say-form input { flex: 1 1 14rem; min-width: 0; padding: 0.5rem; border: 2px solid var(--muted); border-radius: 0.5rem; }
-.retry { margin-top: 0.5rem; }
+.retry { margin: 0 0 0.25rem; }
 table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
 caption { text-align: left; font-weight: 700; }
 th, td { text-align: left; padding: 0.4rem; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }

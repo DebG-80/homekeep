@@ -9,7 +9,7 @@ Built for *Build, Ship, Shape: Amazon Developer Hackathon*: the Alexa+ track (a 
 ## How it works
 
 ```
-Browser (voice or text) ──► FastAPI turn API ──► deterministic guards ──► Strands agent (Bedrock, Claude Haiku 4.5)
+Browser (voice or text) ──► FastAPI turn API ──► deterministic guards ──► Strands agent (Bedrock: Claude Haiku 4.5 by default, Amazon Nova Pro on the hosted demo)
                                    │                                         │ MCP client (Streamable HTTP, tool_filters)
                                    │                                         ▼
                                    └──── trusted approval path ──────► HomeKeep MCP server (/mcp) ──► domain ──► DynamoDB

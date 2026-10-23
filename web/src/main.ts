@@ -1,5 +1,5 @@
 // HomeKeep web client (TDD §8): sign in, then the elder's Talk view, the household and history
-// view, or the staff console. Every view carries the persistent demo badge (TDD §8.6).
+// view, or the staff console. Every view carries the demo tag in the menu bar (TDD §8.6).
 
 import "./styles.css";
 import { Api } from "./api";
@@ -51,8 +51,7 @@ function shell(identity: Identity, api: Api, outlet: HTMLElement): HTMLElement {
     "div",
     { class: "app" },
     h("a", { href: "#main", class: "skip" }, "Skip to content"),
-    demoBadge(),
-    h("header", {}, h("p", { class: "brand" }, "HomeKeep"), nav),
+    h("header", {}, h("p", { class: "brand" }, "HomeKeep ", demoBadge()), nav),
     outlet,
   );
 }
@@ -66,7 +65,7 @@ async function start(root: HTMLElement): Promise<void> {
   } catch (error) {
     const message =
       error instanceof SignInError ? error.message : "HomeKeep could not start. Please reload the page.";
-    root.replaceChildren(demoBadge(), h("main", { id: "main" }, h("h1", {}, "HomeKeep"), h("p", {}, message)));
+    root.replaceChildren(h("main", { id: "main" }, h("h1", {}, "HomeKeep ", demoBadge()), h("p", {}, message)));
   }
 }
 
