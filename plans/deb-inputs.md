@@ -37,8 +37,8 @@ You said yes. Row 12 now records that `TransactWriteItems` was dropped (D-3), an
 
 ## Needs results from your AWS work (send them when you have them)
 
-### 5. Bedrock model access: done (22 Oct)
-It worked first time: a `converse` call to the US Haiku 4.5 profile answered, with no use-case form or Marketplace step. The profile's destination regions are `us-east-1`, `us-east-2` and `us-west-2`, which match infra-contract §6.1, and §15 is ticked. The console's Model access page no longer exists, so §11 now uses the CLI check.
+### 5. Bedrock model access: form needed (23 Oct)
+Your own `converse` call from the CLI worked, but the app's first turn on ECS failed with `ResourceNotFoundException`. CloudTrail showed: "Model use case details have not been submitted for this account. Fill out the Anthropic use case details form before using the model." You submitted the form through **Bedrock → Model catalog → Claude Haiku 4.5**. So **a successful test call does not prove the account is cleared**. The profile's destination regions (`us-east-1`, `us-east-2`, `us-west-2`) match infra-contract §6.1. This is worth a friction-log entry: the check passed for one caller and failed for the app's role, and the app saw only a generic error.
 
 ### 6. MCP Inspector against the hosted `/mcp`
 **What to do:** follow `docs/submission/testing-instructions.md`, "Check the MCP server with MCP Inspector".

@@ -40,7 +40,7 @@ Open http://localhost:8000. Locally there is no Cognito: a sign-in page lists th
 ### A demo walk-through
 
 1. Sign in as **Judge household 1 (owner)**. You start with no appliances and no consent, as a judge would.
-2. On **Talk**, press **Start talking** (or Space) and allow the microphone. Use a headset so HomeKeep doesn't hear itself. You can also type.
+2. On **Talk**, press **Start talking** (or Space) and allow the microphone. Use a headset so HomeKeep doesn't hear itself, and select it as Chrome's microphone (**Settings → Privacy and security → Site settings → Microphone**): Chrome keeps its own choice. Speak, then pause; what you said is sent after about a second. Esc is Stop, not send. You can also type.
 3. Say "Please remember my appliances", then "yes", then "I have an AC in the bedroom" and "It isn't cooling".
 4. Ask for a technician. Give a made-up address and phone number when asked (this is public demo data), and pick a time. Listen to the read-back and say "yes". You hear the demo confirmation.
 5. Sign in as **Technician (assigned)** in another browser profile. Open the case in the **Service desk** and mark the visit completed.
